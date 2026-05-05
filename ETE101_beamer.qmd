@@ -1,0 +1,698 @@
+---
+title: "Numérique et néo-taylorisme dans les entreprises"
+subtitle: "Quels risques pour les salariés ?"
+author: "Tzvetanka KARANOV, Jovial Bodenan BANGA et Alban VIDELOUP"
+institute: "CNAM — UE ETE101"
+date: "Mai 2026"
+lang: fr
+format:
+  beamer:
+    pdf-engine: pdflatex
+    theme: metropolis
+    aspectratio: 169
+    fontsize: 10pt
+    section-titles: true
+    keep-tex: false
+    header-includes: |
+      \usepackage{tcolorbox}
+      \tcbuselibrary{skins,breakable}
+      \metroset{block=fill, progressbar=frametitle, numbering=fraction}
+
+      \definecolor{BG}{HTML}{0D1727}
+      \definecolor{CardBG}{HTML}{152438}
+      \definecolor{CyanA}{HTML}{38BDF8}
+      \definecolor{GreenA}{HTML}{4ADE80}
+      \definecolor{OrangeA}{HTML}{FB923C}
+      \definecolor{PurpleA}{HTML}{7C3AED}
+      \definecolor{CNAMrouge}{HTML}{C1002A}
+      \definecolor{LGrey}{HTML}{CBD5E1}
+      \definecolor{MGrey}{HTML}{64748B}
+
+      \setbeamercolor{normal text}{fg=LGrey, bg=BG}
+      \setbeamercolor{background canvas}{bg=BG}
+      \setbeamercolor{frametitle}{bg=CardBG, fg=white}
+      \setbeamercolor{palette primary}{bg=CardBG, fg=white}
+      \setbeamercolor{progress bar}{fg=CyanA, bg=CardBG}
+      \setbeamercolor{title separator}{fg=CyanA}
+      \setbeamercolor{alerted text}{fg=CyanA}
+      \setbeamercolor{structure}{fg=CyanA}
+      \setbeamercolor{section title}{fg=GreenA, bg=BG}
+
+      \setbeamerfont{title}{size=\Large, series=\bfseries}
+      \setbeamerfont{subtitle}{size=\normalsize, shape=\itshape}
+      \setbeamerfont{frametitle}{size=\normalsize, series=\bfseries}
+      \setbeamerfont{section title}{size=\huge, series=\bfseries}
+
+      \setbeamertemplate{itemize item}{\textcolor{CyanA}{\textbullet}}
+      \setbeamertemplate{itemize subitem}{\textcolor{GreenA}{--}}
+
+      \tcbset{
+        cyancard/.style={colback=CardBG,colframe=CyanA,colupper=LGrey,
+          fonttitle=\bfseries\small\color{CyanA},boxrule=0.8pt,arc=4pt,
+          top=3pt,bottom=3pt,left=5pt,right=5pt,toptitle=2pt,bottomtitle=2pt},
+        greencard/.style={colback=CardBG,colframe=GreenA,colupper=LGrey,
+          fonttitle=\bfseries\small\color{GreenA},boxrule=0.8pt,arc=4pt,
+          top=3pt,bottom=3pt,left=5pt,right=5pt,toptitle=2pt,bottomtitle=2pt},
+        orangecard/.style={colback=CardBG,colframe=OrangeA,colupper=LGrey,
+          fonttitle=\bfseries\small\color{OrangeA},boxrule=0.8pt,arc=4pt,
+          top=3pt,bottom=3pt,left=5pt,right=5pt,toptitle=2pt,bottomtitle=2pt},
+        purplecard/.style={colback=CardBG,colframe=PurpleA,colupper=LGrey,
+          fonttitle=\bfseries\small\color{PurpleA},boxrule=0.8pt,arc=4pt,
+          top=3pt,bottom=3pt,left=5pt,right=5pt,toptitle=2pt,bottomtitle=2pt},
+        redcard/.style={colback=CardBG,colframe=CNAMrouge,colupper=LGrey,
+          fonttitle=\bfseries\small\color{CNAMrouge},boxrule=0.8pt,arc=4pt,
+          top=3pt,bottom=3pt,left=5pt,right=5pt,toptitle=2pt,bottomtitle=2pt},
+        qbox/.style={colback=BG,colframe=PurpleA,colupper=LGrey,
+          boxrule=0pt,leftrule=2.5pt,arc=0pt,top=2pt,bottom=2pt,
+          left=6pt,right=5pt,fontupper=\itshape\scriptsize}
+      }
+      \newcommand{\hsepC}[1]{\par\noindent{\color{#1}\rule{3em}{1pt}}\par\vspace{1pt}}
+      \newcommand{\src}[1]{{\tiny\color{MGrey}\itshape #1}}
+---
+
+# Introduction
+
+## Le retour de l'« appendice de la machine »
+
+```{=latex}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[greencard,title={Contexte \& chiffres clés}]
+\scriptsize
+\textbf{780\,000} ouvriers logistique + \textbf{400\,000} chauffeurs-livreurs (INSEE, 2019)
+
+\medskip
+\textbf{Taylor (1911)} : \textit{«\,One Best Way\,»}\\
+Rationalisation, séparation conception/exécution.
+
+\medskip
+4 scénarios (Hirsch-Kreinsen, 2016) :
+\begin{itemize}\itemsep0pt
+  \item Non-impact \quad Automatisation totale
+  \item Montée en compétences
+  \item \textcolor{GreenA}{\bfseries Taylorisme numérique \(\leftarrow\) notre cas}
+\end{itemize}
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[cyancard,title={Définition : néo-taylorisme numérique}]
+\scriptsize
+Le numérique amplifie les principes de Taylor :
+\begin{itemize}\itemsep2pt
+  \item \textbf{Prescription algorithmique}\\
+    L'algo remplace le contremaître
+  \item \textbf{Surveillance panoptique}\\
+    KPI, capteurs, logs en temps réel
+  \item \textbf{Hyper-flexibilité}\\
+    Intérim, plateformes, interchangeabilité
+\end{itemize}
+\begin{tcolorbox}[qbox]
+«\,Le travailleur réduit à être l'appendice de la machine.\,» — \textbf{Marx}
+\end{tcolorbox}
+\end{tcolorbox}
+\end{column}
+\end{columns}
+```
+
+## Reformulation \& Problématique
+
+```{=latex}
+\begin{tcolorbox}[cyancard,title={Reformulation}]
+\small Comment les technologies numériques intensifient-elles le contrôle sur le travail
+--- menaçant l'autonomie, la santé et le sens --- des ouvriers aux cadres\,?
+\end{tcolorbox}
+\vspace{3pt}
+\begin{tcolorbox}[colback=CNAMrouge,colframe=CNAMrouge,colupper=white,
+    fonttitle=\bfseries\small\color{white},arc=4pt,title={Problématique}]
+\small Dans quelle mesure la numérisation des organisations, en durcissant la séparation
+entre conception et exécution, menace-t-elle l'autonomie, la santé et le sens du travail
+--- du magasinier au cadre supérieur\,?
+\end{tcolorbox}
+\vspace{3pt}
+\begin{tcolorbox}[purplecard,title={Idée maîtresse}]
+\small\itshape Le numérique n'a pas libéré le travailleur : il a créé un \textbf{néo-taylorisme
+camouflé (invisible)}, plus précis et plus étendu --- touchant aussi bien les ouvriers de l'entrepôt
+que les livreurs des plateformes et les cadres du tertiaire.
+\end{tcolorbox}
+```
+
+## Plan de l'exposé
+
+```{=latex}
+\begin{columns}[T]
+\begin{column}{0.33\textwidth}
+\begin{tcolorbox}[redcard,title={\large\textcolor{CNAMrouge}{I} — L'usine à colis}]
+\scriptsize\textit{Taylorisme numérique — entrepôts logistiques}
+\hsepC{CNAMrouge}
+\begin{itemize}\itemsep0pt
+  \item Voice-picking \& prescription
+  \item Surveillance \& KPI
+  \item Déqualification, précarisation
+\end{itemize}
+\src{Gautié \& Perez · Barbier et al.}
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.33\textwidth}
+\begin{tcolorbox}[cyancard,title={\large\textcolor{CyanA}{II} — La subordination camouflée (invisible)}]
+\scriptsize\textit{Uber, Deliveroo — faux travail indépendant}
+\hsepC{CyanA}
+\begin{itemize}\itemsep0pt
+  \item Dépendance algorithmique
+  \item 3€/h, 63h/semaine
+  \item Déconnexion = licenciement
+\end{itemize}
+\src{Public Sénat · Directive EU 2024}
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.33\textwidth}
+\begin{tcolorbox}[orangecard,title={\large\textcolor{OrangeA}{III} — La dictature algorithmique}]
+\scriptsize\textit{Des cols bleus aux cadres}
+\hsepC{OrangeA}
+\begin{itemize}\itemsep0pt
+  \item Standardisation intellectuelle
+  \item KPI \& perte de sens
+  \item Risques psychosociaux
+\end{itemize}
+\src{Dujarier · Clot · Perez \& Coutrot}
+\end{tcolorbox}
+\end{column}
+\end{columns}
+```
+
+# Partie I — L'usine à colis
+
+## La prescription algorithmique {\small\color{GreenA}[I·1]}
+
+```{=latex}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[greencard,title={3 arguments}]
+\scriptsize
+\textbf{(1) Voice-picking — effacement du savoir-faire}\\
+L'algo WMS dicte le trajet, l'article, la cadence.
+Le préparateur n'a plus à penser.
+
+\medskip\textbf{(2) Formation : 2-3 semaines → 2-3 jours}\\
+Compétence incorporée dans le logiciel.
+Travailleur interchangeable.
+
+\medskip\textbf{(3) Séparation radicale conception / exécution}\\
+Ingénieur conçoit en bureau.
+Ouvrier exécute sans comprendre.
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[cyancard,title={3 exemples}]
+\scriptsize
+\textbf{(1) Gautié \& Perez (LIEPP, 2024)}
+\begin{tcolorbox}[qbox]
+«\,Branché le matin, débranché le soir, c'est tout.\,»
+\end{tcolorbox}
+
+\textbf{(2) Gaborieau (2016) — la «\,belle palette\,»}\\
+Fierté du préparateur disparue avec le voice-picking.
+
+\medskip\textbf{(3) Amazon Fulfillment Centers}\\
+Time off Task (TOT) : toute pause déclenche une alerte. Peut mener au licenciement.
+\end{tcolorbox}
+\end{column}
+\end{columns}
+```
+
+## La surveillance panoptique {\small\color{GreenA}[I·2]}
+
+```{=latex}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[greencard,title={3 arguments}]
+\scriptsize
+\textbf{(1) Contrôle en temps réel de tous les KPI}\\
+WMS mesure absentéisme, erreurs, commandes/heure,
+«\,temps productif\,» vs total.
+
+\medskip\textbf{(2) Rémunération variable liée à la performance}\\
+Intéressement conditionné à une batterie de KPI.
+Formule parfois illisible pour le salarié.
+
+\medskip\textbf{(3) Distance managériale croissante}\\
+Chef d'équipe remplacé par un tableau de bord.
+La machine juge, pas l'homme.
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[cyancard,title={3 exemples}]
+\scriptsize
+\textbf{(1) Gautié \& Perez (LIEPP)} — le «\,temps productif\,»
+exclut la formation et la réflexion.
+
+\medskip\textbf{(2) Barbier, Cuny, Gaborieau (2021) — WORKLOG}\\
+5 entrepôts FR \& DE : KPI individuels fragilisent
+la solidarité syndicale (taux : \(\sim\)4\,\%).
+
+\medskip\textbf{(3) Anne-Marie Dujarier}\\
+\textit{Le management désincarné} : le manager ne voit
+plus le travail réel --- seulement des chiffres.
+\end{tcolorbox}
+\end{column}
+\end{columns}
+```
+
+## Déqualification, flexibilisation et précarisation {\small\color{GreenA}[I·3]}
+
+```{=latex}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[greencard,title={3 arguments}]
+\scriptsize
+\textbf{(1) Interchangeabilité comme stratégie RH}\\
+25\,\% d'intérimaires en moyenne,
+jusqu'à 70\,\% dans certains entrepôts.
+
+\medskip\textbf{(2) TMS — troubles musculo-squelettiques}\\
+Cadences algorithmiques. Rotation toutes les 1h30
+--- sans enrichir le travail.
+
+\medskip\textbf{(3) Segmentation genrée et racialisée}\\
+Femmes (52\,\%), étrangers (jusqu'à 100\,\%),
+jeunes étudiants alimentaires.
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[cyancard,title={3 exemples}]
+\scriptsize
+\textbf{(1) Barbier, Cuny, Gaborieau (2021) — WORKLOG}\\
+30-70\,\% d'intérimaires. Promesse CDI = levier de docilité.
+
+\medskip\textbf{(2) Grosshandel (Francfort)}
+\begin{tcolorbox}[qbox]
+«\,Alterner des tâches parcellisées ne suffit pas
+à enrichir l'emploi.\,» — ouvrier interrogé
+\end{tcolorbox}
+
+\textbf{(3) INRS \& DARES}\\
+TMS = \textbf{87\,\%} des maladies professionnelles
+en logistique.
+\end{tcolorbox}
+\end{column}
+\end{columns}
+```
+
+# Partie II — La subordination camouflée (invisible)
+
+## Du salariat au faux travail indépendant {\small\color{CyanA}[II·1]}
+
+```{=latex}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[cyancard,title={3 arguments}]
+\scriptsize
+\textbf{(1) Subordination réelle derrière l'indépendance}\\
+Plateformes externalisent les risques tout en gardant
+le contrôle total via l'algorithme.
+
+\medskip\textbf{(2) L'algo impose : tarif, tâche, territoire}\\
+Le livreur ne fixe pas son prix, ne choisit pas ses
+clients. Subordination économique totale.
+
+\medskip\textbf{(3) Opacité totale de la «\,boîte noire\,»}\\
+Déconnexion sans préavis, sans explication,
+sans recours.
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[greencard,title={3 exemples}]
+\scriptsize
+\textbf{(1) Cour de cassation française (2020)}\\
+Requalification d'un chauffeur Uber en salarié.
+Le «\,travailleur indépendant\,» = mythe juridique.
+
+\medskip\textbf{(2) Directive européenne 2024}\\
+Présomption de salariat : c'est la plateforme qui prouve
+l'indépendance. Transposition France 2026.
+
+\medskip\textbf{(3) Jeremy Rifkin — \textit{La Fin du travail} (1995)}\\
+Dès 1995 : disparition des emplois traditionnels au profit
+d'un précariat numérique. Prophétie réalisée.
+\end{tcolorbox}
+\end{column}
+\end{columns}
+```
+
+## Précarité exacerbée sous couvert d'indépendance {\small\color{CyanA}[II·2]}
+
+```{=latex}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[cyancard,title={3 arguments}]
+\scriptsize
+\textbf{(1) Revenus réels : \(\sim\)3\,€ / heure net}\\
+Après charges, frais de compte, entretien vélo ---
+sous le SMIC.
+
+\medskip\textbf{(2) 63 heures / semaine pour survivre}\\
+Horaires inhumains, journées fractionnées imposées
+par les pics de commandes.
+
+\medskip\textbf{(3) 66\,\% des livreurs parisiens sans titre de séjour}\\
+(Public Sénat, 2022) : vulnérabilité délibérément exploitée.
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[greencard,title={3 exemples}]
+\scriptsize
+\textbf{(1) Public Sénat (2022)}\\
+Sous-location de comptes Uber. Double précarité,
+pratique illégale tolérée.
+
+\medskip\textbf{(2) Médecins du Monde (2022)}
+\begin{tcolorbox}[qbox]
+«\,Esclavage moderne\,» — \textbf{59\,\%} des livreurs
+ont eu un accident de la route.
+\end{tcolorbox}
+
+\textbf{(3) Loïc Wacquant — le «\,précariat\,»}\\
+Ni salarié protégé, ni patron autonome ---
+angle mort juridique et social.
+\end{tcolorbox}
+\end{column}
+\end{columns}
+```
+
+## La sanction algorithmique : licencier sans visage {\small\color{CyanA}[II·3]}
+
+```{=latex}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[cyancard,title={3 arguments}]
+\scriptsize
+\textbf{(1) Déconnexion = licenciement sans procédure}\\
+Compte désactivé en secondes. Fin immédiate
+du revenu, sans préavis ni recours.
+
+\medskip\textbf{(2) Notation client comme arme de pression}\\
+Mauvaise série de notes → déconnexion.
+Pression chronique permanente.
+
+\medskip\textbf{(3) Course aux notifications → accidents}\\
+L'algo favorise les livreurs rapides.
+Rouler vite = survivre économiquement.
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[greencard,title={3 exemples}]
+\scriptsize
+\textbf{(1) Public Sénat (2022)} — \textbf{59\,\%} des livreurs
+ont eu un accident de la route.
+
+\medskip\textbf{(2) Deliveroo France (2020)}\\
+\textbf{120\,000} livreurs déconnectés sans indemnité
+ni préavis à la fermeture.
+
+\medskip\textbf{(3) Rifkin — \textit{La Fin du travail} (1995)}\\
+Élite technologique + masse précaire sans filet.
+Les plateformes réalisent ce scénario.
+\end{tcolorbox}
+\end{column}
+\end{columns}
+```
+
+# Partie III — La dictature algorithmique
+
+## La standardisation du travail intellectuel {\small\color{OrangeA}[III·1]}
+
+```{=latex}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[orangecard,title={3 arguments}]
+\scriptsize
+\textbf{(1) Scripts imposés → effacement du jugement}\\
+8\,min/appel max, script figé.
+Le savoir-faire relationnel est effacé.
+
+\medskip\textbf{(2) ERP / CRM dictent les procédures}\\
+Formulaires verrouillés à France Travail,
+urbanisme, banque.
+
+\medskip\textbf{(3) Autonomie «\,au\,» travail en recul pour les cadres}\\
+Depuis les années 2000, y compris ingénieurs
+et managers.
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[cyancard,title={3 exemples}]
+\scriptsize
+\textbf{(1) Centres d'appels}\\
+TTM : 8\,min/appel. La relation humaine standardisée.
+
+\medskip\textbf{(2) France Travail (ex-Pôle Emploi)}\\
+Scripts d'entretien et quotas de «\,portefeuille géré\,».
+L'accompagnement personnalisé sacrifié.
+
+\medskip\textbf{(3) Max Weber}\\
+Autonomie «\,au\,» vs «\,du\,» travail : les deux formes
+régressent face au numérique.
+\end{tcolorbox}
+\end{column}
+\end{columns}
+```
+
+## Le management par KPI : le chiffre efface le réel {\small\color{OrangeA}[III·2]}
+
+```{=latex}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[orangecard,title={3 arguments}]
+\scriptsize
+\textbf{(1) KPI quantitatifs écrasent la qualité réelle}\\
+Un cadre évalué sur taux de transformation
+ne peut pas former, innover, réfléchir.
+
+\medskip\textbf{(2) Les «\,temps morts\,» créatifs disparaissent}\\
+Réflexion, formation = invisibles dans les
+tableaux de bord → ils disparaissent.
+
+\medskip\textbf{(3) L'entreprise réduite à un dashboard}\\
+\textit{As-If Management} : lofts et baby-foot
+masquent la pression algorithmique.
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[cyancard,title={3 exemples}]
+\scriptsize
+\textbf{(1) Anne-Marie Dujarier}\\
+\textit{Le management désincarné} : fossé prescriptions /
+travail réel → souffrance.
+
+\medskip\textbf{(2) Yves Clot — la \textit{qualité empêchée}}\\
+Impossibilité de «\,bien faire son travail\,»
+à cause des KPI contradictoires → burn-out.
+
+\medskip\textbf{(3) Microsoft Work Trend Index (2023)}\\
+Un cadre utilise \textbf{10 applications 25\,fois/jour}.
+Surcharge cognitive permanente.
+\end{tcolorbox}
+\end{column}
+\end{columns}
+```
+
+## Risques psychosociaux : saturation et perte de sens {\small\color{OrangeA}[III·3]}
+
+```{=latex}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[orangecard,title={3 arguments}]
+\scriptsize
+\textbf{(1) Saturation cognitive : multitasking permanent}\\
+Notifications, outils multiples, visio →
+fragmentation de l'attention, dégradation cognitive.
+
+\medskip\textbf{(2) Burn-out : +25\,\% depuis 2019}\\
+(ANACT, 2023) — cadres et professions intermédiaires
+les plus touchés.
+
+\medskip\textbf{(3) Pathologies physiques des cols blancs}\\
+Douleurs cervicales, yeux secs, troubles du sommeil
+liés aux écrans.
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[cyancard,title={3 exemples}]
+\scriptsize
+\textbf{(1) Modèle «\,Emma\,» (Fellowes, 2019)}\\
+Collègue du futur 2040 : dos voûté, yeux rouges,
+varices. Portrait clinique de l'usure numérique.
+
+\medskip\textbf{(2) Perez \& Coutrot (Seuil, 2022)}\\
+La quête de sens = \textbf{1\textsuperscript{re} aspiration} des salariés français.
+Le néo-taylorisme numérique la détruit.
+
+\medskip\textbf{(3) ANACT 2023}\\
++25\,\% de burn-out. Hyperconnexion,
+réunions post-18h, droit à la déconnexion ignoré.
+\end{tcolorbox}
+\end{column}
+\end{columns}
+```
+
+# Jeremy Rifkin — Focus théorique
+
+## Jeremy Rifkin — *La Fin du Travail* (1995)
+
+```{=latex}
+\begin{tcolorbox}[qbox,before skip=0pt,after skip=4pt]
+«\,L'IA n'est pas seulement un outil de productivité : c'est l'aboutissement de la transition prévue par Rifkin ---
+le passage du travail-effort au travail-donnée.\,»
+\end{tcolorbox}
+
+\begin{columns}[T]
+\begin{column}{0.33\textwidth}
+\begin{tcolorbox}[greencard,title={Substitution du Capital}]
+\scriptsize
+Rifkin (1995) : le capital technologique remplace massivement le travail humain. Les nouveaux secteurs ne créent plus assez d'emplois.
+\hsepC{GreenA}
+\textcolor{GreenA}{→} Logistique : robot vs préparateur\\
+\textcolor{GreenA}{→} IA : algo vs cadre
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.33\textwidth}
+\begin{tcolorbox}[cyancard,title={Coût Marginal Zéro}]
+\scriptsize
+La productivité numérique réduit le coût de production à presque zéro. Fragilise le salariat traditionnel.
+\hsepC{CyanA}
+\textcolor{CyanA}{→} Uber : coût marginal zéro pour la plateforme\\
+\textcolor{CyanA}{→} Le travailleur finance sa propre exploitation
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.33\textwidth}
+\begin{tcolorbox}[purplecard,title={Le Tiers-Secteur}]
+\scriptsize
+Rifkin propose l'économie sociale et solidaire pour réabsorber les travailleurs déplacés.
+\hsepC{PurpleA}
+\textcolor{PurpleA}{→} Revenu universel de base\\
+\textcolor{PurpleA}{→} «\,Robot tax\,»\\
+\textcolor{PurpleA}{→} Débat ouvert 30 ans plus tard
+\end{tcolorbox}
+\end{column}
+\end{columns}
+```
+
+# Conclusion & Ouverture
+
+## Conclusion — Trois visages d'une même aliénation
+
+```{=latex}
+\begin{columns}[T]
+\begin{column}{0.33\textwidth}
+\begin{tcolorbox}[redcard,title={I — L'entrepôt}]
+\scriptsize
+Voice-picking, WMS, KPI en temps réel.\\
+Corps soumis à l'algorithme.\\
+Déqualification, précarisation, TMS.
+\\\src{Gautié \& Perez · Barbier et al.}
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.33\textwidth}
+\begin{tcolorbox}[cyancard,title={II — Les plateformes}]
+\scriptsize
+Subordination sans statut.\\
+3\,€/h net, 63\,h/semaine, 59\,\% d'accidents.\\
+Directive EU 2024.
+\\\src{Public Sénat · Médecins du Monde}
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.33\textwidth}
+\begin{tcolorbox}[orangecard,title={III — Les cadres}]
+\scriptsize
+Standardisation du travail intellectuel.\\
+KPI contradictoires, qualité empêchée.\\
+Burn-out +25\,\%, saturation cognitive.
+\\\src{Dujarier · Clot · Perez \& Coutrot}
+\end{tcolorbox}
+\end{column}
+\end{columns}
+\vspace{4pt}
+\begin{tcolorbox}[purplecard]
+\small\textbf{Rifkin (1995) l'avait prévu} · La technologie peut-elle être mise au service
+d'un \textbf{«\,bon travail\,»} (santé, sens, démocratie) plutôt que d'un simple calcul de flux\,?
+\end{tcolorbox}
+```
+
+## Ouverture — Les nouvelles frontières technologiques
+
+```{=latex}
+\begin{columns}[T]
+\begin{column}{0.33\textwidth}
+\begin{tcolorbox}[greencard,title={Intelligence Artificielle Générative}]
+\scriptsize
+GPT-4, Claude, Gemini\dots
+\begin{itemize}\itemsep1pt
+  \item Déqualification des tâches intellectuelles complexes
+  \item L'IA prescrit, l'humain valide : \textit{taylorisme cognitif}
+\end{itemize}
+\textcolor{GreenA}{→} Rifkin : fin du travail intellectuel\,?
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.33\textwidth}
+\begin{tcolorbox}[cyancard,title={Informatique Quantique}]
+\scriptsize
+Optimisation à une échelle inimaginable :
+\begin{itemize}\itemsep1pt
+  \item Optimisation de flux portée à l'extrême
+  \item Surveillance prédictive : contrôler avant l'acte
+\end{itemize}
+\textcolor{CyanA}{→} Le panopticon parfait\,?
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.33\textwidth}
+\begin{tcolorbox}[purplecard,title={Robotique Humanoïde}]
+\scriptsize
+Figure AI, Tesla Optimus\dots
+\begin{itemize}\itemsep1pt
+  \item Robot remplace l'ouvrier physique
+  \item Libération OU précarisation extrême\,?
+\end{itemize}
+\textcolor{PurpleA}{→} Rifkin : fin du travail physique\,?
+\end{tcolorbox}
+\end{column}
+\end{columns}
+\vspace{4pt}
+\begin{center}
+\textit{\textcolor{MGrey}{«\,Qui contrôle l'algorithme\,?\,» — la question politique centrale du XXI\textsuperscript{e} siècle.}}
+\end{center}
+```
+
+## Bibliographie
+
+```{=latex}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[greencard,title={Articles \& recherches}]
+\scriptsize
+\begin{itemize}\itemsep2pt
+  \item Gautié J., Perez C. (2024), LIEPP/Sciences Po.
+  \item Barbier C., Cuny C., Gaborieau D. (2021),\\
+    \textit{Travail \& Emploi}, n°162, pp.23-45.
+  \item Gaborieau D. (2016), thèse, Univ. Paris\,1.
+  \item Gautié J., Jaehrling K., Perez C. (2020),\\
+    \textit{Relations Industrielles}, vol.75, n°4.
+  \item Hirsch-Kreinsen H. (2016), WISO-Diskurs.
+  \item Dujarier A.-M. (2015), La Découverte.
+\end{itemize}
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.5\textwidth}
+\begin{tcolorbox}[cyancard,title={Ouvrages \& actualité}]
+\scriptsize
+\begin{itemize}\itemsep2pt
+  \item \textbf{Rifkin J. (1995/1996)}, \textit{La Fin du travail}, La Découverte.
+  \item \textbf{Perez C., Coutrot T. (2022)}, \textit{Redonner du sens au travail}, Seuil.
+  \item \textbf{Clot Y. (2010)}, \textit{Le travail à cœur}, La Découverte.
+  \item Public Sénat (2022), enquête livreurs.
+  \item Directive européenne 2024/2831 (plateformes).
+  \item Microsoft Work Trend Index (2023).
+  \item ANACT (2023), Rapport conditions de travail.
+\end{itemize}
+\end{tcolorbox}
+\end{column}
+\end{columns}
+```
