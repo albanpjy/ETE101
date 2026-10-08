@@ -1,0 +1,4 @@
+name: prenoms
+type: duckdb
+options:
+  filename: ":memory:"

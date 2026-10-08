@@ -1,0 +1,8 @@
+.evidence
+.svelte-kit
+build
+node_modules
+.DS_Store
+# données téléchargées / générées : reproduites par `npm run data`
+data/raw/
+data/*.parquet
