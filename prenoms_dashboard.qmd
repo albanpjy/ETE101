@@ -1,0 +1,1051 @@
+---
+title: "Les prénoms en France · 1900–2022"
+subtitle: "Démographie, sociologie et géographie du fichier des prénoms de l'INSEE"
+author: "Analyse du fichier INSEE dpt2022"
+lang: fr
+format:
+  dashboard:
+    theme: cosmo
+    orientation: rows
+    scrolling: true
+    include-in-header:
+      text: |
+        <style>
+          /* Contrôles OJS compacts dans les cartes de paramètres */
+          .card-body.cell:has(form) { flex: 0 0 auto !important; min-height: 0 !important;
+                                      padding-top: .4rem; padding-bottom: .4rem; }
+        </style>
+    nav-buttons:
+      - icon: database
+        href: https://www.insee.fr/fr/statistiques/7633685
+        aria-label: Source INSEE
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+# Encodage : les prénoms accentués exigent une locale UTF-8
+if (!isTRUE(l10n_info()$`UTF-8`)) invisible(try(Sys.setlocale("LC_CTYPE", "C.UTF-8"), silent = TRUE))
+
+# Paquets ----------------------------------------------------------------------
+library(data.table)   # lecture et agrégation rapides (3,8 M lignes)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(forcats)
+library(ggplot2)
+library(plotly)
+library(scales)
+library(jsonlite)
+
+# Palette catégorielle (ordre fixe, validée daltonisme) ------------------------
+pal <- c(blue = "#2a78d6", orange = "#eb6834", aqua = "#1baf7a", yellow = "#eda100",
+         magenta = "#e87ba4", green = "#008300", violet = "#4a3aa7", red = "#e34948")
+col_sexe <- c("Garçons" = pal[["blue"]], "Filles" = pal[["orange"]])
+gris_autres <- "#b5b3ad"
+ink   <- "#0b0b0b"
+ink2  <- "#52514e"
+grid_col <- "#e6e5e1"
+
+theme_dash <- function() {
+  theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.minor   = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.major.y = element_line(colour = grid_col, linewidth = 0.3),
+      axis.text  = element_text(colour = ink2),
+      axis.title = element_text(colour = ink2),
+      strip.text = element_text(face = "bold", colour = ink, hjust = 0),
+      legend.position = "top",
+      legend.title = element_blank(),
+      plot.title = element_text(face = "bold", colour = ink)
+    )
+}
+
+# Mise en forme commune des objets plotly
+pl_style <- function(p, legend = TRUE, hovermode = "x unified") {
+  p |>
+    layout(
+      hovermode = hovermode,
+      font = list(family = "Inter, Segoe UI, Helvetica, Arial, sans-serif", color = ink2),
+      legend = list(orientation = "h", x = 0, y = -0.12, yanchor = "top", title = list(text = "")),
+      showlegend = legend,
+      margin = list(l = 10, r = 10, t = 30, b = 10)
+    ) |>
+    config(displaylogo = FALSE, locale = "fr",
+           modeBarButtonsToRemove = c("lasso2d", "select2d", "autoScale2d"))
+}
+
+fmt_n   <- function(x) format(round(x), big.mark = " ", scientific = FALSE, trim = TRUE)
+fmt_pct <- function(x, acc = 0.1) percent(x, accuracy = acc, decimal.mark = ",", suffix = " %")
+```
+
+```{r}
+#| label: chargement
+#| include: false
+
+# 1. Lecture -------------------------------------------------------------------
+# Le CSV (≈ 81 Mo) est extrait de l'archive à la première exécution.
+csv_path <- "data/dpt2022.csv"
+if (!file.exists(csv_path)) unzip("data/dpt2022_csv.zip", exdir = "data")
+
+raw <- fread(csv_path, sep = ";", encoding = "UTF-8",
+             colClasses = c(sexe = "integer", preusuel = "character",
+                            annais = "character", dpt = "character", nombre = "integer"))
+
+# 2. Nettoyage -----------------------------------------------------------------
+#  - annais = "XXXX" : année non diffusée (secret statistique)  -> NA
+#  - dpt    = "XX"   : département non diffusé                  -> NA
+#  - "_PRENOMS_RARES": prénoms regroupés car attribués < 3 fois
+#                      (par département et par année), ou de 1 lettre
+dt <- raw[, .(
+  sexe   = factor(fifelse(sexe == 1L, "Garçons", "Filles"), levels = c("Garçons", "Filles")),
+  prenom = str_squish(preusuel),
+  annee  = suppressWarnings(as.integer(fifelse(annais == "XXXX", NA_character_, annais))),
+  dpt    = fifelse(dpt == "XX", NA_character_, dpt),
+  nombre
+)]
+dt[, rare := prenom == "_PRENOMS_RARES"]
+rm(raw); invisible(gc())
+
+dt_an <- dt[!is.na(annee)]                      # lignes datées (analyses temporelles)
+
+n_masque_annee <- dt[is.na(annee), sum(nombre)]
+n_masque_dpt   <- dt[is.na(dpt),   sum(nombre)]
+
+# 3. Agrégats nationaux ---------------------------------------------------------
+nat <- dt_an[, .(n = sum(nombre)), by = .(sexe, prenom, rare, annee)]
+naiss_an <- nat[, .(n = sum(n)), by = .(annee, sexe)][order(annee)]
+naiss_an_tot <- naiss_an[, .(n = sum(n)), by = annee]
+```
+
+```{r}
+#| label: etymologie
+#| include: false
+
+# Dictionnaire des familles étymologiques ---------------------------------------
+# Règle de classement : la *forme linguistique* l'emporte sur la racine lointaine.
+#   JEAN  -> hébraïque ; mais JOHN, JORDAN -> anglo-saxon ; YANN -> celtique ;
+#   GIOVANNI, MATTEO -> italo-hispanique. On mesure ainsi l'aire culturelle par
+#   laquelle le prénom est arrivé dans le stock français, ce qui est la variable
+#   sociologiquement pertinente (modes, migrations, régionalismes).
+# Les prénoms composés sont classés selon leur premier élément (MARIE-CLAIRE -> MARIE).
+# Les clefs sont sans accents (normalisation ASCII).
+
+dico <- list(
+  "Hébraïque / Biblique" = "
+    DAVID ELSA RUBEN ILAN YAEL YAELLE ELIJAH EZRA ISAIAH HANNA HANNAH JONAS NATHAEL ARON YONI JOANNA JOANA JOAN JOANNES DINA SOLAL NAOMIE MARLENE MYLENE MARYLOU MARILOU LYA LIA ELYAS MATIS MATYS BARTHELEMY THERESE LISETTE
+    JEAN JEANNE JEANNINE JEANINE JANINE JEANNETTE JEANNOT JOHANNA JOHANNE JOHAN JOHANN YOHAN YOHANN
+    JOEL JOELLE MARIE MARIANNE MARIETTE MARIELLE MARION MANON MARYSE MARYLINE MARYLENE MARILYNE
+    MARYLINE MARYLISE MICHEL MICHELE MICHELLE MICHELINE MICHAEL MICKAEL MIKAEL MICHAELLE JACQUES
+    JACQUELINE JOSEPH JOSEPHINE JOSETTE JOSIANE JOSEPHE DANIEL DANIELE DANIELLE DANY ANNE ANNA
+    ANNETTE ANNIE ANNABELLE ANAIS ELISABETH ISABELLE ISABEL ELISE LISE LISA ELISA LISON BABETTE
+    ELIE ELIAS ELIOT ELIOTT ELIA ELIANA EMMANUEL EMMANUELLE JEREMY JEREMIE JONATHAN NATHAN NATHANAEL
+    NOAH NOA NOE NOAM NOHAM ADAM AARON ABEL SAMUEL SIMON SIMONE SIMONNE SARAH SARA RACHEL REBECCA
+    JUDITH ESTHER DEBORAH MYRIAM GABRIEL GABRIELLE GABY RAPHAEL RAPHAELLE THOMAS MATHIEU MATTHIEU
+    MATHIAS MATTHIAS MATHIS MATHYS BENJAMIN ISAAC JOACHIM MARTHE MADELEINE MAGDELEINE EVE EVA
+    SUZANNE SUZETTE SUZY NOEMIE SALOME EDEN ZACHARIE TOBIE NAOMI LEA LEANE LEANA LEONA MOISE JOSUE
+    ELIANNA NATHANAELLE MANOAH JEANNICK BETTINA MARTHA
+    ",
+  "Gréco-Romain" = "
+    DIDIER DAMIEN REMI REMY GAETAN GABIN DIMITRI MELINA MELINE MELIA MELYNA LORIS TIMOTHE COME THAIS ZELIE ALMA CLEA CLEO LENA DAPHNE ANASTASIA THALIA ATHENAIS SELENE SELENA SERENA OLYMPE IRENEE HADRIEN FIRMIN AUBIN ISIDORE ARISTIDE FELICIEN FELICITE HILAIRE URBAIN IGNACE LUCE LUBIN VIVIEN FLORENTIN MARCELLINE MARINETTE LAURENE LAURY LAURYNE LAURETTE LAURIANNE CORALINE CAMELIA DORINE DORIS TEO LUKA LUKAS LOUKA LOUCA LOUCAS VIOLAINE SIXTINE PRISCA PACOME NEO TOUSSAINT SAUVEUR AMAND ELOI ROSETTE NOELLA NOELINE SOLENNE TYMEO THIMEO YANIS YANNIS MARCUS MAXINE CHRISTINA CHRISTIANNE ETIENNETTE ISAURE CELIAN YOLANDE SABRINA
+    PIERRE PIERRETTE PERRINE ANDRE ANDREE PHILIPPE NICOLAS NICOLE NICOLLE COLETTE COLINE CHRISTIAN
+    CHRISTIANE CHRISTINE CHRISTOPHE CHRISTELLE CHRISTEL CHRISTELE CHRYSTELLE CATHERINE GEORGES
+    GEORGETTE GREGOIRE STEPHANE STEPHANIE ETIENNE SEBASTIEN BASTIEN SOPHIE SOPHIA SOFIA HELENE
+    ALEXANDRE ALEXANDRA ALEXANDRINE ALEXIS ALEXIA ALEX ANTOINE ANTOINETTE ANTONIN ANTONIA PAUL PAULE
+    PAULETTE PAULINE MARC MARCEL MARCELLE MARCELINE MARCEAU MARTIN MARTINE MARTIAL MARINE MARIN
+    MARINA JULES JULIE JULIEN JULIENNE JULIETTE JULIA JULIAN JUSTIN JUSTINE LAURENT LAURENCE LAURE
+    LAURA LAURIE LAURINE LAURIANE CLAUDE CLAUDETTE CLAUDINE CLAUDIE CLAUDIA CLAUDIUS VICTOR VICTOIRE
+    VICTORIA VICTORINE VINCENT VALENTIN VALENTINE VALERIE VALERIAN MAXIME MAXENCE MAX MAXIMILIEN
+    EMILE EMILIE EMILIEN EMILIENNE CECILE CECILIA CELINE CELIA CLEMENT CLEMENCE CLEMENTINE FLORENCE
+    FLORENT FLORIAN FLORIANE FLORINE FLORE FLORA FABIEN FABIENNE FABRICE PATRICK PATRICE PATRICIA
+    PASCAL PASCALE PASCALINE SYLVIE SYLVAIN SYLVIANE SYLVIA SYLVETTE SERGE DENIS DENISE DOMINIQUE
+    CORINNE CORINE MONIQUE NATHALIE IRENE MARGUERITE MARGAUX MARGOT AGATHE AGNES BARBARA BEATRICE
+    BERENICE CAMILLE CHLOE CLOE CLARA CLAIRE CLARISSE CONSTANCE CONSTANT CYRIL CYRILLE CYPRIEN DIANE
+    DOROTHEE EUGENE EUGENIE HORTENSE HIPPOLYTE IRIS LEON LEONIE LEONE LEONTINE LEO LEANDRE LUC LUCIE
+    LUCIEN LUCIENNE LUCILE LUCILLE LUCETTE LUCAS LYDIE LYDIA MELANIE MELISSA MELODIE OCEANE OPHELIE
+    PENELOPE PHILOMENE RENE RENEE REGINE REINE REGIS ROMAIN ROMANE ROMUALD ROSE ROSALIE ROSELINE
+    ROSELYNE SABINE SANDRINE SANDRA SEVERINE STELLA THEO THEODORE THEOPHILE TIMOTHEE TIMEO URSULE
+    ULYSSE VERONIQUE VIRGINIE VIVIANE VIVIENNE OLIVIER OLIVIA OCTAVE AURELIE AURELIEN AURELIA AURORE
+    AUGUSTE AUGUSTIN AUGUSTINE AUGUSTA ADRIEN ADRIENNE AMANDINE AMANDA APOLLINE ARIANE BASILE BLANDINE
+    BENOIT BENEDICTE CELESTIN CELESTINE CASSANDRE CASSANDRA CYNTHIA FAUSTINE FELICIE FELIX FLAVIE
+    FLAVIEN HECTOR JASON LIVIA NOEL NOELLE NOELIE PRISCILLA SOLENE SOLINE SOLANGE SALOMON VIOLETTE
+    ZOE MARIUS MAURICE MAURICETTE ESTELLE ELIANE LILIAN LILIANE DORIAN DORIANE GILLES GERMAIN
+    GERMAINE CORALIE CELESTE BAPTISTE JEROME HELENA ELENA ANGELE ANGELIQUE ANGELINE ANGE MARTINE
+    ARSENE ACHILLE ANATOLE NINON PAULIN VIRGILE JUSTINE NADEGE CAPUCINE CLOTHILDE? LUDIVINE MAGALI?
+    PHILEMON SEVERIN QUENTIN CORENTINE CANDICE DELPHINE DESIRE DESIREE AIME AIMEE PERRIN TATIANA
+    ROMEO? HERMINE AMBROISE CESAR CAMILLA SIMEON SIDONIE THEA ALBANE ALBAN ORIANE ORLANE LAETITIA
+    JEROMINE ESTEL HONORE HONORINE OCTAVIE FULBERT? MAXIMIN EULALIE EUPHRASIE PROSPER AMEDEE
+    ",
+  "Germano-Franc" = "
+    ALICE ALICIA ALYCIA ALYSSIA FANNY ROBIN LINDA LYNDA ALBERTE ROLLAND ROMARIC EMERIC SEGOLENE ALOIS ALOYSE FRANCISQUE EDGARD EDMONDE HENRY FRIEDA ERNA LUDOVIC GINETTE KARINE CARINE NILS SOREN GERVAIS GUYLAINE GISLAINE KLEBER WILFRID FRANTZ CARL MAUD MAUDE ARMANDINE CLOTHILDE CLOTAIRE GISELLE ERICK LINE ALFREDA FRANCETTE COLIN
+    LOUIS LOUISE LOUISETTE LOUISA LOUANE LOU LOUNA HENRI HENRIETTE BERNARD BERNADETTE ROBERT ROBERTE
+    ROGER RAYMOND RAYMONDE GERARD GERALD GERALDINE GILBERT GILBERTE GUY GUILLAUME CHARLES CHARLOTTE
+    CHARLINE CHARLENE CAROLINE CAROLE ALBERT ALBERTINE ALFRED ALPHONSE ALPHONSINE ARMAND ARMANDE
+    ARNAUD BERTRAND BERTHE BRUNO EDMOND EDOUARD FERNAND FERNANDE FERDINAND FREDERIC FREDERIQUE
+    GASTON GAUTHIER GAUTIER GISELE GONTRAN GUSTAVE HUBERT HUGUES HUGUETTE HUGO LEOPOLD LEONARD
+    MATHILDE ODETTE ODILE RICHARD ROLAND ROLANDE RODOLPHE RAOUL RENAUD THIBAUD THIBAULT THIBAUT
+    THIERRY YVES YVETTE YVONNE ADELE ADELINE ADOLPHE ALINE ALIX AMAURY AMELIE AUDE BLANCHE EDWIGE
+    ELODIE EMMA EMELINE ERNEST ERNESTINE FRANCOIS FRANCOISE FRANCE FRANCK FRANK FRANCIS FRANCINE
+    GERTRUDE HELOISE ELOISE IRMA NORBERT AYMERIC BAUDOUIN CLOTILDE CLOVIS INGRID KARL ERIC ERIKA
+    OSCAR AXEL AXELLE ARLETTE ASTRID GENEVIEVE GHISLAIN GHISLAINE GODEFROY HERMANN OTTO WILFRIED
+    EMMELINE LEONORE ELEONORE ALIENOR ROSINE MARCELIN ANSELME ROMY BRICE BERENGERE CONRAD ADELAIDE
+    GUILLEMETTE EUDES LAMBERT LOTHAIRE MATHURIN MEDARD RAYNALD REYNALD RAYNAUD SIEGFRIED WALTER
+    ERNESTO? HILDA HEDWIGE ANSGAR GUNTHER AMALIA EMELYNE ALEXINE ADELIA LIONEL GEOFFROY JOSSELINE
+    JOCELYN JOCELYNE ELVIRE ELVIRA BERTILLE BERTHILLE RENELLE EDGAR GEORGINA
+    ",
+  "Anglo-Saxon" = "
+    LYAM ELLIOT ELLIE LINDSAY JAYDEN HAYDEN AIDEN EYDEN KAYDEN TYLER WYATT CAMERON WARREN LEWIS LUCY JOY JUNE ABBY LEXIE BILLIE GRACE NELL SAM TIM MALONE KYLLIAN NOLANN NOLHAN MARLON CASSIE KAYLA MADDY KIM CHRIS MIKE NANCY PAMELA MAUREEN MELODY MELINDA BRENDA KATHLEEN JOYCE LAUREN TRACY KATHY KATY AMY EMILY MARY PETER MELVYN GARY TOMMY EDDIE FREDERICK FRED JASMINE SANDIE RUDDY ELLA AVA TESSA TESS MATTHEW MARJORIE FIONA JANE STEPHAN LAUREEN SWAN SWANN KELYAN KESSY
+    KEVIN DYLAN BRYAN BRIAN BRANDON JORDAN STEVEN STEVE STEEVE STEPHEN JOHNNY JOHN JIMMY JAMES
+    JESSICA JENNIFER CINDY SANDY KELLY WENDY TIFFANY SAMANTHA PEGGY BETTY MEGANE MEGAN ANTHONY
+    ANTONY GREGORY GEOFFREY CHRISTOPHER CHARLIE CHARLY EDDY FREDDY TEDDY WILLY WILLIAM JACKY JACK
+    JACKIE LOGAN NOLAN RYAN LIAM ETHAN EVAN OWEN AYDEN ANDY DONOVAN KYLIAN KILLIAN KILIAN TOM HARRY
+    MARVIN MELVIN JOSHUA LESLIE SHIRLEY AUDREY ALISON ALYSSA EVELYNE EVELINE EDITH GLADYS VANESSA
+    CATHY JESSY LENNY JENNY KIMBERLEY KIMBERLY STACY STACEY MAGGIE NELLY LILY LILLY MAEVA? MAYA?
+    BRADLEY DAVY KENNY KEN JOHNATHAN NATHALY ASHLEY CHELSEA SHANA SHANNON HAILEY SAMMY RUDY DAISY
+    JORIS MORGAN ALLAN EMMY EMY SULLIVAN CALVIN CLIFF CHRISTY DOUGLAS ROY TERRY TIMOTHY WAYNE ERWANN?
+    KAREN GWENDOLINE? SHAWN SEAN NEIL DEAN JULIANNE ROXANNE? CANDY MANDY LOLITA? TONY PRISCILLIA
+    ",
+  "Arabo-Musulman" = "
+    LINA LYNA NAIM MAISSA SIRINE SYRINE FARAH ASMA ADEL DOUNIA AMINATA MUSTAPHA FARES DJIBRIL JIBRIL NORDINE SANA BRAHIM CHAIMA MOURAD MARWAN MARWANE BILEL HAWA NAILA HANAE IMRANE FATMA ISSAM SALIMA SOFIAN HANA ZOHRA EMNA MERIEM YOUSRA MAYSSA SOULEYMANE SOULEYMAN NESRINE HICHAM SELIM HALIMA HAROUN ASSYA ASSIYA REDA YASSIN SABRI ADIL FOUAD KAMIL KAMILA SIHAM ILHAN HAFSA HANANE NAHEL IMENE IMEN RYAD RIYAD SAFIYA EMIR SAFA KASSIM QASSIM IYAD NAYLA TASNIM ELYES MAIMOUNA IBRAHIMA AYMAN HIND LOUBNA NASSER ADAMA OUSMANE DRISS JAD HEDI MUSTAFA OUMAR MAISSANE SALAH BINTOU LAMIA AMADOU JASSIM ISRA IYED CHAHINE NOOR YASSER JIHANE MUHAMMED ZIYAD KAHINA SAKINA MARIAMA SANAA FANTA ESMA ELIF AYLIN AYLINE ENES ILYAN JANNA JANNAH NAIL AKSEL ALIYA ALIYAH AALIYAH NAELLE MAHAMADOU AWA YUSUF LAILA
+    MOHAMED MOHAMMED MOHAMMAD MOHAMAD MUHAMMAD AHMED AHMAD ALI KARIM KARIMA RACHID RACHIDA FARID
+    FARIDA MEHDI ABDELKADER ABDEL ABDALLAH ABDELLAH ADEM AICHA AMEL AMINA AMINE AMIR AMIRA ANAS ANIS
+    ANISSA ASSIA AYA AYOUB BILAL DALILA FATIMA FATOUMATA HAKIM HAMZA HASSAN HOUSSAM IBRAHIM ILYES
+    ILYAS ILIES ILYASS IMANE IMRAN INAYA KAMEL KAIS KENZA LEILA LEYLA MALIK MALIKA MANEL MARIAM
+    MARYAM MERYEM MOUSSA NABIL NASSIM NOUR NOURA RAYAN RAYANE SAID SALIM SAMI SAMY SAMIA SAMIR
+    SAMIRA SELMA SOFIANE SOUFIANE SORAYA WALID WASSIM YACINE YASSINE YAMINA YASMINA YASMINE YOUNES
+    YOUSSEF ZAKARIA ZAKARIYA OMAR ISMAEL ISMAIL NAEL KHADIJA ZINEB ZAHRA WAEL MOUNIR NADIR NAWEL
+    SABRINA? SOUMAYA HIBA HAJAR KHALID MOHAND MALEK DJAMEL DJAMILA JAMEL JAMILA NAIMA LATIFA RACHIDA
+    AMAR AKIM NAZIM ANAYA AYMEN SAMI MOUHAMED MAMADOU ABOUBACAR IDRISS IDRIS YOUCEF HOCINE MOHAND
+    ILYANA MARWA SALMA SAFIA RANIA LINA? MALAK ALYA ALIA AMIN MEHDY BADR WIAM NAJAT MOHAMED-AMINE
+    YANISS NAHIL RAYANNE ISSA YAHYA ZAYD ZAYN ZAYNAB AYMANE MOHAMED-ALI KARINE?
+    ",
+  "Italo-Hispanique" = "
+    UGO SANDRO LISANDRO GIULIAN LENZO PACO FRANCISCO LUIS PAULA PAULO ANGEL VALENTINA EMILIA GRAZIELLA ORNELLA PALOMA KIARA LUNA MIA ANA MANUELLA SERENA
+    ENZO LORENZO MATTEO MATEO MATHEO MATTHEO ANTONIO GIOVANNI GIULIA CHIARA DIEGO CARLOS CARLA
+    CARMEN DOLORES MANUEL MANUELA MIGUEL PABLO TIAGO THIAGO ESTEBAN NINO LUCA ANGELO MARIO MARIA
+    ANGELINA LOLA INES PAOLA ALESSANDRO GIANNI LORENA ALBA RAFAEL EMILIO MARCO ANDREA ELIO SERGIO
+    FRANCESCO ROMEO PAOLO CARLO GIUSEPPE SALVATORE FRANCO RICARDO FERNANDO JUAN JUANITA PEDRO PEPITA
+    ISABELLA GABRIELLA RAPHAELA ROSA ROSARIO MERCEDES CONCEPCION PILAR ESPERANZA ANITA LUCIA LUCIANO
+    MARCELLO ADRIANO VALENTINO GIANNA CHIARA ALESSIA SOFIANA TIZIANO LEANDRO SANTIAGO ALVARO ADRIANA
+    INAS LUCAS? ANGELA MARISA MARISOL LUISA LUIGI RENATO LORENZA DONATELLA BIANCA SOLEDAD FABIO
+    CLAUDIO ROBERTO ALBERTO LEONARDO GAETANO DAMIANO NICOLA EMILIANO MATHEA ELENA? LIVIO RITA SILVIA
+    TERESA MARCELA PATRIZIA
+    ",
+  "Régional / Celtique" = "
+    BRIGITTE CEDRIC MURIEL MURIELLE SOIZIC GWLADYS GILDAS TYPHAINE TIPHANIE ANNAELLE LOAN LOANE LOANN ARMEL MAHE XAVIER NAIA GUILHEM
+    YANN YANNICK YANNIS? ERWAN ERWANN RONAN TANGUY GWENAELLE GWENDOLINE GWENOLA NOLWENN ENORA MAEL
+    MAELLE MAELYS MAELIS EWEN EWAN LOIC ARMELLE CORENTIN TRISTAN BRIEUC GURVAN ALAN ALAIN ARTHUR
+    MORGANE TIPHAINE TIPHAINE GAEL GAELLE HERVE ANNICK SOAZIG MAIWENN KATELL YOANN YOAN YVON
+    MARYVONNE MALO ELOUAN TITOUAN PIERRICK JOSSELIN GWENN GWEN BRIAC BRIAG JULIG ANAELLE ELOANE
+    KILLIANE KILLYAN? AZILIZ MAIWEN LOEIZ ALANIG TUDAL YAEL? MAILYS MAYLIS IKER ENEKO MAITE MAIALEN
+    XABI JOKIN ANDONI ANTTON PERU IBAN ARGITXU AINHOA AITOR AMAIA ORSO LISANDRU BATTISTU ANGHJULU
+    PASQUALINA LAETIZIA SAVERIU MAGALI MAGALIE MIREILLE MAELLA RONANE ARZHUR GURVAN ROZENN NOLAN?
+    ENOLA ELOUANN KENAN TUGDUAL GWENAEL GAETANE? KILIANE MAELENN LENAIC LENA? MORVAN OANEZ TREVOR?
+    "
+)
+
+dico_dt <- rbindlist(lapply(names(dico), function(f) {
+  v <- str_split(str_squish(dico[[f]]), " ")[[1]]
+  v <- v[!str_detect(v, "\\?$")]                    # les termes douteux (« ? ») sont ignorés
+  data.table(cle = unique(v), famille = f)
+}))
+dico_dt <- unique(dico_dt, by = "cle")              # premier rattachement prioritaire
+
+familles <- c(names(dico), "Autres / non classés")
+
+normalise <- function(x) {
+  x |> stringi::stri_trans_general("Latin-ASCII") |> toupper() |> str_extract("^[^\\- ]+")
+}
+
+classer <- function(prenoms) {
+  cle <- normalise(prenoms)
+  fam <- dico_dt$famille[match(cle, dico_dt$cle)]
+  # Règles morphologiques de repli (suffixes / préfixes très discriminants)
+  fam <- case_when(
+    !is.na(fam) ~ fam,
+    str_detect(cle, "^(ABD|MOHA|MOUHA|MAHMO|KHAL|KHAD|YOUSS|MOUSS|FATI|SOUF|NOUR)|EDDINE$") ~ "Arabo-Musulman",
+    str_detect(cle, "^(GWEN|ERW|YANN|KATELL|SOAZ|MAEL|MAIW|NOLW)|(WENN|ENN|ZIG|IG)$") ~ "Régional / Celtique",
+    str_detect(cle, "(TXU|TXO|ITZ|TX)") ~ "Régional / Celtique",
+    str_detect(cle, "^(KEV|DYL|BRY|BRAND|JORD|STEV|JENN|JESS|KIMB|SHAN|SHIR|WEND|STAC)|(SON|LEY|LYN)$") ~ "Anglo-Saxon",
+    str_detect(cle, "(ELLO|ETTO|INO|IO|ANO|ITA|ITO)$") ~ "Italo-Hispanique",
+    TRUE ~ "Autres / non classés"
+  )
+  factor(fam, levels = familles)
+}
+
+prenoms_uniques <- unique(nat[rare == FALSE, .(prenom)])
+prenoms_uniques[, famille := classer(prenom)]
+nat <- merge(nat, prenoms_uniques, by = "prenom", all.x = TRUE)
+nat[rare == TRUE, famille := factor("Autres / non classés", levels = familles)]
+
+couverture <- nat[rare == FALSE, sum(n[famille != "Autres / non classés"]) / sum(n)]
+
+col_fam <- setNames(c(pal[["blue"]], pal[["orange"]], pal[["aqua"]], pal[["yellow"]],
+                      pal[["magenta"]], pal[["green"]], pal[["violet"]], gris_autres),
+                    familles)
+```
+
+```{r}
+#| label: indicateurs
+#| include: false
+
+# KPIs ------------------------------------------------------------------------
+kpi_total    <- dt[, sum(nombre)]
+kpi_uniques  <- dt[rare == FALSE, uniqueN(prenom)]
+kpi_rares22  <- dt_an[annee == 2022, sum(nombre[rare]) / sum(nombre)]
+top_hist     <- nat[rare == FALSE, .(n = sum(n)), by = .(prenom, sexe)][order(-n)][1]
+kpi_annees   <- range(dt_an$annee)
+
+# Diversité / concentration par année ------------------------------------------
+diversite <- nat[, .(
+  distincts = uniqueN(prenom[!rare]),
+  part_rares = sum(n[rare]) / sum(n)
+), by = annee]
+
+top10 <- nat[rare == FALSE][order(annee, sexe, -n)][, rang := seq_len(.N), by = .(annee, sexe)]
+part_top10 <- merge(top10[rang <= 10, .(n10 = sum(n)), by = .(annee, sexe)],
+                    naiss_an, by = c("annee", "sexe"))[, part := n10 / n]
+
+pic_naiss <- naiss_an_tot[which.max(n)]
+t10 <- function(an, sx) part_top10[annee == an & sexe == sx, part]
+dv  <- function(an) diversite[annee == an]
+creux_1916 <- naiss_an_tot[annee %in% 1914:1919][which.min(n)]
+avant_guerre <- naiss_an_tot[annee == 1913, n]
+creux_ww2  <- naiss_an_tot[annee %in% 1939:1945][which.min(n)]
+naiss_1975 <- naiss_an_tot[annee == 1975, n]
+naiss_2022 <- naiss_an_tot[annee == 2022, n]
+sr <- dcast(naiss_an, annee ~ sexe, value.var = "n")[, sr := 100 * `Garçons` / Filles]
+sr_1900   <- sr[annee == 1900, sr]
+sr_recent <- sr[annee >= 1980, mean(sr)]
+```
+
+# Vue d'ensemble
+
+## Row {height="140px"}
+
+```{r}
+#| content: valuebox
+#| title: "Naissances recensées"
+list(icon = "people-fill", color = "primary", value = fmt_n(kpi_total))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Prénoms distincts (hors rares)"
+list(icon = "fingerprint", color = "info", value = fmt_n(kpi_uniques))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Part des prénoms rares en 2022"
+list(icon = "stars", color = "warning", value = fmt_pct(kpi_rares22))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Prénom le plus donné depuis 1900"
+list(icon = "trophy-fill", color = "success",
+     value = str_to_title(top_hist$prenom))
+```
+
+## Row {height="560px"}
+
+```{r}
+#| title: "Naissances annuelles par sexe, 1900–2022"
+evts <- tibble::tribble(
+  ~debut, ~fin, ~label,
+  1914, 1918, "Grande Guerre",
+  1939, 1945, "Seconde Guerre mondiale",
+  1946, 1973, "Baby-boom"
+)
+
+g_naiss <- ggplot(naiss_an, aes(annee, n, colour = sexe,
+                                text = paste0(sexe, " ", annee, " : ", fmt_n(n)))) +
+  geom_rect(data = evts, inherit.aes = FALSE,
+            aes(xmin = debut, xmax = fin, ymin = -Inf, ymax = Inf),
+            fill = c("#f0efec", "#f0efec", "#e7f0fb"), alpha = 0.9) +
+  geom_text(data = evts, inherit.aes = FALSE,
+            aes(x = (debut + fin) / 2, y = max(naiss_an$n) * 1.06, label = label),
+            colour = ink2, size = 3.2) +
+  geom_line(aes(group = sexe), linewidth = 0.8) +
+  scale_colour_manual(values = col_sexe) +
+  scale_y_continuous(labels = label_number(big.mark = " "),
+                     limits = c(0, max(naiss_an$n) * 1.1), expand = c(0, 0)) +
+  scale_x_continuous(breaks = seq(1900, 2020, 10)) +
+  labs(x = NULL, y = "Naissances") +
+  theme_dash()
+
+ggplotly(g_naiss, tooltip = "text") |> pl_style()
+```
+
+::: {.card title="Lecture démographique" width="32%"}
+**Trois chocs structurent le siècle.** La Grande Guerre fait plonger les naissances
+à leur minimum en **`r creux_1916$annee`** (`r fmt_n(creux_1916$n)` naissances recensées
+contre `r fmt_n(avant_guerre)` en 1913, soit **`r fmt_pct(creux_1916$n / avant_guerre - 1, 1)`**) :
+ce sont les « classes creuses », dont l'écho se lit vingt ans plus tard. La Seconde Guerre
+mondiale produit un creux plus modéré (`r creux_ww2$annee`), immédiatement suivi du
+**baby-boom** : maximum en **`r pic_naiss$annee`** (`r fmt_n(pic_naiss$n)`) et plateau élevé
+jusqu'en 1973. La rupture de 1974 (fin du baby-boom, diffusion de la contraception)
+ramène le niveau à `r fmt_n(naiss_1975)` en 1975 ; le reflux des années 2010 aboutit à
+`r fmt_n(naiss_2022)` naissances recensées en 2022.
+
+*Précautions de lecture :* le fichier est issu de l'état civil depuis 1946 ; les générations
+antérieures sont reconstituées à partir des personnes encore en vie lors de la constitution
+du répertoire et sont donc **fortement sous-estimées**. Signe de ce biais de survie, le
+rapport de masculinité vaut `r round(sr_1900)` garçons pour 100 filles en 1900 (les femmes
+vivent plus longtemps), contre `r round(sr_recent)` en moyenne depuis 1980 (la valeur
+biologique est d'environ 105 ; l'écart résiduel tient notamment au secret statistique). `r fmt_n(n_masque_annee)` naissances sans année diffusée (`XXXX`) sont exclues
+des courbes.
+:::
+
+## Row {height="560px"}
+
+```{r}
+#| title: "Diversité et concentration des prénoms"
+div_long <- bind_rows(
+  diversite |> transmute(annee, panneau = "Prénoms distincts attribués dans l'année",
+                         serie = "Prénoms distincts", valeur = distincts,
+                         txt = paste0(annee, " : ", fmt_n(distincts), " prénoms distincts")),
+  diversite |> transmute(annee, panneau = "Part des naissances (%)",
+                         serie = "Prénoms rares", valeur = 100 * part_rares,
+                         txt = paste0(annee, " — prénoms rares : ", fmt_pct(part_rares))),
+  part_top10 |> as_tibble() |>
+    transmute(annee, panneau = "Part des naissances (%)",
+              serie = paste0("Top 10 ", tolower(sexe)), valeur = 100 * part,
+              txt = paste0(annee, " — top 10 ", tolower(sexe), " : ", fmt_pct(part)))
+) |>
+  mutate(serie = factor(serie, levels = c("Prénoms distincts", "Top 10 garçons",
+                                          "Top 10 filles", "Prénoms rares")),
+         panneau = fct_inorder(panneau))
+
+g_div <- ggplot(div_long, aes(annee, valeur, colour = serie, group = serie, text = txt)) +
+  geom_line(linewidth = 0.8) +
+  facet_wrap(~panneau, ncol = 2, scales = "free_y") +
+  scale_colour_manual(values = c("Prénoms distincts" = pal[["violet"]],
+                                 "Top 10 garçons" = pal[["blue"]],
+                                 "Top 10 filles" = pal[["orange"]],
+                                 "Prénoms rares" = pal[["aqua"]])) +
+  scale_x_continuous(breaks = seq(1900, 2020, 20)) +
+  scale_y_continuous(labels = label_number(big.mark = " "), limits = c(0, NA)) +
+  labs(x = NULL, y = NULL) +
+  theme_dash()
+
+ggplotly(g_div, tooltip = "text") |> pl_style(hovermode = "closest")
+```
+
+::: {.card title="De la norme à la singularité" width="32%"}
+**Le XX^e^ siècle est celui de la dé-standardisation.** En 1900, une poignée de prénoms
+(Marie, Jean, Louis, Pierre…) suffit à nommer une très large part des enfants : le
+**top 10** concentre `r fmt_pct(t10(1900, "Filles"), 1)` des filles et
+`r fmt_pct(t10(1900, "Garçons"), 1)` des garçons. Ce poids s'effondre ensuite pour tomber à
+`r fmt_pct(t10(2022, "Filles"), 1)` et `r fmt_pct(t10(2022, "Garçons"), 1)` en 2022.
+
+En miroir, le **nombre de prénoms distincts** passe de `r fmt_n(dv(1900)$distincts)` en 1900
+à `r fmt_n(dv(2022)$distincts)` en 2022, et la **part des prénoms rares** bondit de
+`r fmt_pct(dv(1970)$part_rares, 0.1)` (1970) à `r fmt_pct(dv(2022)$part_rares, 0.1)` (2022) :
+le prénom cesse d'être un héritage (parrain, saint du calendrier, aïeul) pour devenir un
+**marqueur d'individualité** choisi par les parents — tendance amplifiée par la loi du
+8 janvier 1993 qui libéralise le choix des prénoms.
+
+*Note :* les prénoms rares sont agrégés à l'échelle départementale ; leur part est donc
+plus élevée qu'au niveau national, et le décompte des prénoms distincts est un minorant.
+:::
+
+# Sociologie & étymologie
+
+## Row {height="620px"}
+
+```{r}
+#| include: false
+fam_an <- function(sx = NULL) {
+  d <- if (is.null(sx)) nat[rare == FALSE] else nat[rare == FALSE & sexe == sx]
+  d[, .(n = sum(n)), by = .(annee, famille)][, part := n / sum(n), by = annee] |>
+    as_tibble() |>
+    complete(annee, famille, fill = list(n = 0, part = 0)) |>
+    mutate(txt = paste0(famille, " — ", annee, " : ", fmt_pct(part)))
+}
+
+stack_plot <- function(df) {
+  g <- ggplot(df, aes(annee, part, fill = famille, group = famille, text = txt)) +
+    geom_area(position = "stack", colour = "white", linewidth = 0.2) +
+    scale_fill_manual(values = col_fam, drop = FALSE) +
+    scale_y_continuous(labels = label_percent(), expand = c(0, 0)) +
+    scale_x_continuous(breaks = seq(1900, 2020, 10), expand = c(0, 0)) +
+    labs(x = NULL, y = "Part des naissances (hors prénoms rares)") +
+    theme_dash()
+  ggplotly(g, tooltip = "text") |> pl_style(hovermode = "closest")
+}
+
+fam_tous <- fam_an()
+f <- fam_tous |> filter(annee %in% c(1900, 1960, 1990, 2022)) |>
+  select(annee, famille, part) |> pivot_wider(names_from = annee, values_from = part)
+p <- function(fam, an) fmt_pct(f[[as.character(an)]][f$famille == fam], 1)
+pic_fam <- function(fam) fam_tous |> filter(famille == fam) |> slice_max(part, n = 1, with_ties = FALSE)
+```
+
+::: {.panel-tabset title="Répartition des familles étymologiques, 1900–2022"}
+
+### Ensemble
+
+```{r}
+stack_plot(fam_tous)
+```
+
+### Filles
+
+```{r}
+stack_plot(fam_an("Filles"))
+```
+
+### Garçons
+
+```{r}
+stack_plot(fam_an("Garçons"))
+```
+
+:::
+
+::: {.card title="Un siècle de recomposition culturelle" width="32%"}
+Classement par dictionnaire (`r fmt_n(nrow(dico_dt))` formes) complété par des règles
+morphologiques ; il couvre **`r fmt_pct(couverture, 1)`** des naissances (hors prénoms
+rares, non classables). La *forme* du prénom prime sur sa racine : *Jean* est hébraïque,
+*Yann* celtique, *Johnny* anglo-saxon.
+
+- **Le socle chrétien s'érode.** Les prénoms **hébraïques / bibliques** (Marie, Jean,
+  Joseph…) passent de `r p("Hébraïque / Biblique", 1900)` en 1900 à
+  `r p("Hébraïque / Biblique", 2022)` en 2022, tout en se renouvelant (Noah, Gabriel,
+  Raphaël, Léa).
+- **Le fonds gréco-romain** (Pierre, Paul, Nicolas, Christine) domine les Trente
+  Glorieuses : pic à `r fmt_pct(pic_fam("Gréco-Romain")$part, 1)` en `r pic_fam("Gréco-Romain")$annee`.
+  Le **germano-franc** (Louis, Henri, Robert) culmine
+  dès `r pic_fam("Germano-Franc")$annee`.
+- **La vague anglo-saxonne** culmine en `r pic_fam("Anglo-Saxon")$annee`
+  (`r fmt_pct(pic_fam("Anglo-Saxon")$part, 1)`) : Kevin, Jennifer, Dylan… choix très
+  socialement marqué (milieux populaires, culture télévisuelle).
+- **Les prénoms arabo-musulmans** (`r p("Arabo-Musulman", 2022)` en 2022) et
+  **italo-hispaniques** (`r p("Italo-Hispanique", 2022)` : Enzo, Mattéo, Luna) traduisent
+  l'histoire migratoire, mais aussi l'attrait général pour les sonorités méridionales.
+- **Régional / celtique** : une première vague dans les années 1950 (Alain, Hervé,
+  Yannick), puis la diffusion des formes bretonnes (Maël, Nolwenn, Erwan).
+- La part **« autres »** (`r p("Autres / non classés", 2022)` en 2022) grossit avec les
+  créations récentes (Jade, Lilou, Ambre, Mila) : le stock se libère de toute filiation.
+:::
+
+## Row {height="640px"}
+
+```{r}
+#| include: false
+annees_top <- c(1900, 1960, 2000, 2022)
+top10_sel <- top10[annee %in% annees_top & rang <= 10] |>
+  merge(naiss_an[, .(annee, sexe, tot = n)], by = c("annee", "sexe")) |>
+  as_tibble() |>
+  mutate(part = n / tot,
+         lab  = str_to_title(prenom),
+         y    = paste(lab, annee, sep = "___"),
+         txt  = paste0("<b>", lab, "</b> (", annee, ")<br>", fmt_n(n), " naissances<br>",
+                       fmt_pct(part, 0.01), " des ", tolower(sexe), "<br>", famille))
+
+lead <- top10_sel |> filter(rang == 1) |> select(annee, sexe, lab, part)
+L <- function(an, sx) {
+  r <- lead |> filter(annee == an, sexe == sx)
+  paste0("**", r$lab, "** (", fmt_pct(r$part, 0.1), ")")
+}
+
+top_plot <- function(sx) {
+  d <- top10_sel |> filter(sexe == sx) |>
+    mutate(y = fct_reorder(y, n))
+  g <- ggplot(d, aes(n, y, fill = famille, text = txt)) +
+    geom_col(width = 0.75) +
+    facet_wrap(~annee, nrow = 1, scales = "free") +
+    scale_y_discrete(labels = function(x) sub("___.*$", "", x)) +
+    scale_x_continuous(labels = label_number(scale = 1e-3, suffix = "\u202fk", decimal.mark = ","), n.breaks = 3) +
+    scale_fill_manual(values = col_fam, drop = TRUE) +
+    labs(x = NULL, y = NULL) +
+    theme_dash() +
+    theme(panel.grid.major.y = element_blank(),
+          panel.grid.major.x = element_line(colour = grid_col, linewidth = 0.3))
+  ggplotly(g, tooltip = "text") |> pl_style(hovermode = "closest")
+}
+```
+
+::: {.panel-tabset title="Top 10 des prénoms en 1900, 1960, 2000 et 2022 (couleur = famille étymologique)"}
+
+### Prénoms féminins
+
+```{r}
+top_plot("Filles")
+```
+
+### Prénoms masculins
+
+```{r}
+top_plot("Garçons")
+```
+
+:::
+
+::: {.card title="Ce que disent les palmarès" width="32%"}
+- **1900** : `r L(1900, "Filles")` et `r L(1900, "Garçons")` écrasent la distribution —
+  plus d'une fille sur cinq s'appelle Marie. Le prénom est alors une affaire de
+  transmission familiale et religieuse.
+- **1960** : `r L(1960, "Filles")` et `r L(1960, "Garçons")` ; le palmarès se renouvelle
+  entièrement (Sylvie, Martine, Patrick, Thierry) : la mode remplace la tradition.
+- **2000** : `r L(2000, "Filles")` et `r L(2000, "Garçons")` ; triomphe des formes courtes
+  et vocaliques (Théo, Hugo, Lucas, Emma, Chloé).
+- **2022** : `r L(2022, "Filles")` et `r L(2022, "Garçons")` — le numéro 1 pèse moins de
+  2 % des naissances : la **longue traîne** l'a emporté. Le retour de Louise, Rose, Jules,
+  Arthur ou Louis illustre un **cycle de mode d'environ un siècle** : les prénoms des
+  arrière-grands-parents redeviennent désirables lorsqu'ils n'évoquent plus aucun
+  contemporain.
+:::
+
+# Explorateur
+
+```{r}
+#| include: false
+# Données compactes pour Observable : une série 1900–2022 par prénom × sexe
+annees <- kpi_annees[1]:kpi_annees[2]
+explo <- nat[rare == FALSE, .(n = sum(n)), by = .(prenom, sexe, annee)]
+gros  <- explo[, .(tot = sum(n)), by = .(prenom, sexe)][tot >= 300]
+explo <- explo[gros, on = .(prenom, sexe)]
+explo <- explo[CJ(prenom = unique(prenom), sexe = levels(sexe), annee = annees, unique = TRUE),
+               on = .(prenom, sexe, annee)][gros[, .(prenom, sexe)], on = .(prenom, sexe), nomatch = 0]
+explo[is.na(n), n := 0L]
+explo_series <- explo[order(prenom, sexe, annee),
+                      .(serie = paste(n, collapse = ","), total = sum(n)),
+                      by = .(prenom, sexe)]
+explo_series[, sexe := as.character(sexe)]
+explo_series[, key := paste0(prenom, fifelse(sexe == "Filles", " (F)", " (M)"))]
+explo_series <- explo_series[order(-total)]
+
+tot_series <- naiss_an[order(sexe, annee), .(serie = paste(n, collapse = ",")), by = sexe]
+tot_series[, sexe := as.character(sexe)]
+
+ojs_define(explo_raw = explo_series[, .(key, prenom, sexe, total, serie)],
+           tot_raw = tot_series, an0 = annees[1], an1 = annees[length(annees)])
+```
+
+## Row {height="100%"}
+
+### Column {width="24%"}
+
+::: {.card title="Sélection des prénoms"}
+
+```{ojs}
+//| echo: false
+viewof filtre = Inputs.text({label: "Filtrer la liste", placeholder: "ex. : MA, LOU, ENZ…"})
+```
+
+```{ojs}
+//| echo: false
+viewof choix = Inputs.select(
+  cles.filter(k => k.includes(filtre.toUpperCase())),
+  {label: "Prénoms (1 à 5, Ctrl/⌘ + clic)", multiple: 14,
+   value: defaut.filter(k => k.includes(filtre.toUpperCase()))}
+)
+```
+
+```{ojs}
+//| echo: false
+viewof mode = Inputs.radio(
+  ["Naissances", "‰ des naissances (même sexe)"],
+  {label: "Échelle", value: "Naissances"})
+```
+
+```{ojs}
+//| echo: false
+viewof lissage = Inputs.toggle({label: "Lissage (moyenne mobile 5 ans)", value: false})
+```
+
+```{ojs}
+//| echo: false
+md`${choix.length > 5 ? "⚠️ Seuls les 5 premiers prénoms sont tracés." :
+     choix.length === 0 ? "Sélectionnez au moins un prénom." : ""}
+<small>${fmtN(cles.length)} prénoms disponibles (≥ 300 naissances cumulées).
+(F) = fille, (M) = garçon.</small>`
+```
+
+:::
+
+### Column
+
+```{ojs}
+//| echo: false
+//| title: "Trajectoire des prénoms sélectionnés, 1900–2022"
+Plot.plot({
+  width: 1000,
+  height: 480,
+  marginLeft: 60, marginRight: 120,
+  x: {label: null, tickFormat: "d", domain: [an0, an1]},
+  y: {label: mode === "Naissances" ? "Naissances" : "‰ des naissances",
+      grid: true, zero: true, tickFormat: mode === "Naissances" ? frLocale.format(",~s") : frLocale.format(",.1f")},
+  color: {domain: sel, range: palette, legend: true},
+  marks: [
+    Plot.ruleY([0], {stroke: "#c3c2b7"}),
+    Plot.lineY(lignes, {x: "annee", y: "v", stroke: "key", strokeWidth: 2, curve: "monotone-x"}),
+    Plot.text(lignes, Plot.selectMaxY({x: "annee", y: "v", z: "key", text: d => `${d.key.split(" (")[0]} ${d.annee}`,
+      dy: -10, fill: "#52514e", fontSize: 11})),
+    Plot.ruleX(lignes, Plot.pointerX({x: "annee", stroke: "#b5b3ad"})),
+    Plot.dot(lignes, Plot.pointerX({x: "annee", y: "v", fill: "key", r: 4, stroke: "white"})),
+    Plot.tip(lignes, Plot.pointerX({x: "annee", y: "v", z: "key",
+      title: d => `${d.key} — ${d.annee}\n${mode === "Naissances" ? fmtN(d.v) + " naissances" : d.v.toFixed(2) + " ‰"}`}))
+  ]
+})
+```
+
+```{ojs}
+//| echo: false
+//| title: "Fiche synthétique"
+Inputs.table(stats, {
+  columns: ["Prénom", "Total", "Année de pic", "Naissances au pic", "Année médiane", "Âge médian en 2022"],
+  format: {Total: fmtN, "Naissances au pic": fmtN, "Année de pic": String, "Année médiane": String},
+  layout: "auto", rows: 6
+})
+```
+
+```{ojs}
+//| echo: false
+//| output: false
+// ---- Préparation des données (côté client) -----------------------------------
+explo = transpose(explo_raw)
+cles = explo.map(d => d.key)
+index = new Map(explo.map(d => [d.key, d]))
+totaux = new Map(transpose(tot_raw).map(d => [d.sexe, d.serie.split(",").map(Number)]))
+defaut = ["MARIE (F)", "JEAN (M)", "KEVIN (M)", "LÉA (F)", "LOUISE (F)"]
+palette = ["#2a78d6", "#eb6834", "#1baf7a", "#e87ba4", "#4a3aa7"]
+frLocale = d3.formatLocale({decimal: ",", thousands: "\u202f", grouping: [3], currency: ["", " €"]})
+fmtN = frLocale.format(",d")
+sel = choix.slice(0, 5)
+
+lisser = (arr, k) => arr.map((_, i) => {
+  const a = Math.max(0, i - k), b = Math.min(arr.length - 1, i + k);
+  return d3.mean(arr.slice(a, b + 1));
+})
+
+lignes = sel.flatMap(key => {
+  const d = index.get(key);
+  let v = d.serie.split(",").map(Number);
+  if (mode !== "Naissances") {
+    const t = totaux.get(d.sexe);
+    v = v.map((x, i) => t[i] > 0 ? 1000 * x / t[i] : 0);
+  }
+  if (lissage) v = lisser(v, 2);
+  return v.map((x, i) => ({key, annee: an0 + i, v: x}));
+})
+
+stats = sel.map(key => {
+  const d = index.get(key);
+  const v = d.serie.split(",").map(Number);
+  const tot = d3.sum(v);
+  const iMax = d3.maxIndex(v);
+  let cum = 0, med = an0;
+  for (let i = 0; i < v.length; i++) { cum += v[i]; if (cum >= tot / 2) { med = an0 + i; break; } }
+  return {"Prénom": key, "Total": tot, "Année de pic": an0 + iMax,
+          "Naissances au pic": v[iMax], "Année médiane": med, "Âge médian en 2022": 2022 - med};
+})
+```
+
+# Cartographie
+
+```{r}
+#| include: false
+# Géométries (départements métropolitains, Corse en 2A/2B) ---------------------
+geo_path <- "data/departements.geojson"
+if (!file.exists(geo_path)) {
+  download.file("https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements-version-simplifiee.geojson",
+                geo_path, quiet = TRUE)
+}
+geo <- fromJSON(geo_path, simplifyVector = FALSE)
+dpt_noms <- rbindlist(lapply(geo$features, \(f) as.data.table(f$properties)))
+setnames(dpt_noms, c("code", "nom"))
+
+# Le fichier INSEE code la Corse « 20 » : on duplique vers 2A / 2B pour la carte
+vers_geo <- function(d) {
+  corse <- d[dpt == "20"]
+  rbind(d[dpt != "20"], copy(corse)[, dpt := "2A"], copy(corse)[, dpt := "2B"])
+}
+
+dt_dpt <- dt_an[!is.na(dpt) & !rare]
+naiss_dpt_an <- dt_an[!is.na(dpt), .(tot = sum(nombre)), by = .(dpt, sexe, annee)]
+
+# Sélection de prénoms emblématiques / régionaux / émergents
+carto_sel <- tribble(
+  ~prenom, ~sexe, ~groupe,
+  "YANN", "Garçons", "Breton", "ERWAN", "Garçons", "Breton", "RONAN", "Garçons", "Breton",
+  "TANGUY", "Garçons", "Breton", "LOÏC", "Garçons", "Breton", "NOLWENN", "Filles", "Breton",
+  "ENORA", "Filles", "Breton", "GWENAELLE", "Filles", "Breton", "MAËLLE", "Filles", "Breton",
+  "MALO", "Garçons", "Breton", "ELOUAN", "Garçons", "Breton",
+  "ENEKO", "Garçons", "Basque", "MAITE", "Filles", "Basque", "XABI", "Garçons", "Basque",
+  "ANTTON", "Garçons", "Basque", "MAYLIS", "Filles", "Gascon",
+  "ANGE", "Garçons", "Corse", "MARIE-ANGE", "Filles", "Corse", "LISANDRU", "Garçons", "Corse",
+  "ORSO", "Garçons", "Corse", "JEAN-BAPTISTE", "Garçons", "Corse",
+  "MIREILLE", "Filles", "Provençal", "MAGALI", "Filles", "Provençal",
+  "KEVIN", "Garçons", "Mode", "ENZO", "Garçons", "Mode", "DYLAN", "Garçons", "Mode",
+  "KYLIAN", "Garçons", "Mode", "NOLAN", "Garçons", "Mode", "TIMÉO", "Garçons", "Mode",
+  "LÉA", "Filles", "Mode", "JADE", "Filles", "Mode", "MAËLYS", "Filles", "Mode",
+  "EMMA", "Filles", "Mode", "LOUISE", "Filles", "Rétro", "ARTHUR", "Garçons", "Rétro",
+  "GABRIEL", "Garçons", "Rétro", "MOHAMED", "Garçons", "Migrations", "RAYAN", "Garçons", "Migrations",
+  "INÈS", "Filles", "Migrations", "MARIE", "Filles", "Tradition", "JEAN", "Garçons", "Tradition",
+  "PAULETTE", "Filles", "Tradition"
+) |>
+  mutate(sexe = factor(sexe, levels = levels(dt$sexe))) |>
+  as.data.table()
+
+carto <- dt_dpt[carto_sel, on = .(prenom, sexe), nomatch = 0]
+carto[, periode := fifelse(annee >= 2020, "2020–2022",
+                           paste0(annee %/% 10 * 10, "–", annee %/% 10 * 10 + 9))]
+
+agg_periode <- function(d, tot) {
+  num <- d[, .(n = sum(nombre)), by = .(prenom, sexe, groupe, dpt, periode)]
+  den <- tot[, .(tot = sum(tot)), by = .(dpt, sexe, periode)]
+  merge(num, den, by = c("dpt", "sexe", "periode"))[, pm := 1000 * n / tot]
+}
+naiss_dpt_an[, periode := fifelse(annee >= 2020, "2020–2022",
+                                  paste0(annee %/% 10 * 10, "–", annee %/% 10 * 10 + 9))]
+carto_p <- agg_periode(carto, naiss_dpt_an)
+carto_t <- agg_periode(copy(carto)[, periode := "1900–2022"],
+                       copy(naiss_dpt_an)[, periode := "1900–2022"])
+carto_all <- vers_geo(rbind(carto_p, carto_t))
+carto_all[, key := paste0(prenom, " — ", tolower(groupe))]
+
+ojs_define(carte_raw = carto_all[, .(key, dpt, periode, n, pm = round(pm, 3))],
+           geo_fr = geo,
+           dpt_noms_raw = dpt_noms,
+           cles_carte = unique(carto_all[order(groupe, prenom)]$key))
+```
+
+## Row {height="640px"}
+
+### Column {width="20%"}
+
+::: {.card title="Paramètres de la carte"}
+
+```{ojs}
+//| echo: false
+viewof prenomCarte = Inputs.select(cles_carte, {label: "Prénom", value: "NOLWENN — breton"})
+```
+
+```{ojs}
+//| echo: false
+viewof periodeCarte = Inputs.select(
+  ["1900–2022", ...periodes],
+  {label: "Période", value: "1900–2022"})
+```
+
+```{ojs}
+//| echo: false
+md`<small>Valeur : nombre de naissances portant ce prénom pour **1 000 naissances du même
+sexe** dans le département sur la période. Les départements d'outre-mer ne sont pas
+cartographiés. Corse : données INSEE agrégées (« 20 ») appliquées à 2A et 2B.</small>`
+```
+
+:::
+
+### Column {width="48%"}
+
+```{ojs}
+//| echo: false
+//| title: "Carte interactive : intensité départementale du prénom (‰)"
+Plot.plot({
+  width: Math.min(width, 680), height: 600,
+  projection: {type: "conic-conformal", parallels: [44, 49], rotate: [-3, 0], domain: geoFr},
+  color: {type: "sqrt", scheme: "blues", legend: true, label: "‰ des naissances", zero: true},
+  marks: [
+    Plot.geo(geoFr, {
+      fill: f => valeurs.get(f.properties.code) ?? 0,
+      stroke: "white", strokeWidth: 0.6
+    }),
+    Plot.tip(geoFr.features, Plot.pointer(Plot.geoCentroid({
+      title: f => {
+        const r = lignesCarte.get(f.properties.code);
+        return `${f.properties.nom} (${f.properties.code})\n` +
+               (r ? `${r.pm.toFixed(2)} ‰ — ${fmtN(r.n)} naissances` : "aucune naissance");
+      }})))
+  ]
+})
+```
+
+### Column
+
+```{ojs}
+//| echo: false
+//| title: "Départements où le prénom est le plus fréquent"
+Plot.plot({
+  width: Math.max(320, width * 0.3), height: 600, marginLeft: 150,
+  x: {label: "‰ des naissances du même sexe", grid: true},
+  y: {label: null},
+  marks: [
+    Plot.barX(top15, {x: "pm", y: "nom", sort: {y: "-x"}, fill: "#2a78d6", rx: 2,
+                      tip: true, title: d => `${d.nom}\n${d.pm.toFixed(2)} ‰ — ${fmtN(d.n)} naissances`}),
+    Plot.ruleX([0])
+  ]
+})
+```
+
+```{ojs}
+//| echo: false
+//| output: false
+carte = transpose(carte_raw)
+geoFr = geo_fr
+dptNom = new Map(transpose(dpt_noms_raw).map(d => [d.code, d.nom]))
+periodes = [...new Set(carte.map(d => d.periode))].filter(p => p !== "1900–2022").sort()
+lignesCarte = new Map(carte.filter(d => d.key === prenomCarte && d.periode === periodeCarte)
+                           .map(d => [d.dpt, d]))
+valeurs = new Map([...lignesCarte].map(([k, d]) => [k, d.pm]))
+top15 = [...lignesCarte.values()].filter(d => d.dpt !== "2B")
+  .map(d => ({...d, nom: d.dpt === "2A" ? "Corse" : (dptNom.get(d.dpt) ?? d.dpt)}))
+  .sort((a, b) => b.pm - a.pm).slice(0, 15)
+```
+
+## Row {height="620px"}
+
+```{r}
+#| include: false
+# Indice de localisation (LQ) : part du prénom dans le département / part nationale
+# calculé sur 1946–2022 (période d'état civil complet)
+regionaux <- carto_sel[groupe %in% c("Breton", "Basque", "Gascon", "Corse", "Provençal")]
+lq <- dt_dpt[annee >= 1946][regionaux, on = .(prenom, sexe), nomatch = 0][
+  , .(n = sum(nombre)), by = .(prenom, sexe, groupe, dpt)]
+den <- naiss_dpt_an[annee >= 1946, .(tot = sum(tot)), by = .(dpt, sexe)]
+lq <- merge(lq, den, by = c("dpt", "sexe"))
+lq[, part := n / tot]
+nat_part <- lq[, .(part_nat = sum(n) / den[sexe == .BY$sexe, sum(tot)]), by = .(prenom, sexe)]
+lq <- merge(lq, nat_part, by = c("prenom", "sexe"))[, LQ := part / part_nat]
+lq <- lq[!dpt %in% c("971", "972", "973", "974", "976")]
+lq_full <- as_tibble(lq) |>
+  complete(nesting(prenom, groupe), dpt = sort(unique(lq$dpt)), fill = list(LQ = 0, n = 0)) |>
+  left_join(dpt_noms |> rename(dpt = code) |> bind_rows(tibble(dpt = "20", nom = "Corse")), by = "dpt") |>
+  mutate(lab = paste0(str_to_title(prenom), " (", tolower(groupe), ")"),
+         lab = fct_reorder(lab, as.integer(factor(groupe)), .desc = TRUE),
+         txt = paste0("<b>", str_to_title(prenom), "</b> — ", nom, " (", dpt, ")<br>",
+                      "Indice de localisation : ", number(LQ, accuracy = 0.1, decimal.mark = ","),
+                      "<br>", fmt_n(n), " naissances (1946–2022)"))
+lqv <- function(p, d) number(lq[prenom == p & dpt == d, LQ], accuracy = 1)
+```
+
+```{r}
+#| title: "Heatmap : sur-représentation des prénoms régionaux par département (indice de localisation, 1946–2022)"
+g_lq <- ggplot(lq_full, aes(dpt, lab, fill = pmin(LQ, 50), text = txt)) +
+  geom_tile(colour = "white", linewidth = 0.25) +
+  scale_fill_gradientn(colours = c("#f7f7f5", "#cde2fb", "#86b6ef", "#3987e5", "#1c5cab", "#0d366b"),
+                       values = rescale(c(0, 1, 3, 8, 20, 50)), limits = c(0, 50),
+                       name = "Indice\n(1 = moyenne\nnationale)") +
+  labs(x = "Département (code INSEE)", y = NULL) +
+  theme_dash() +
+  theme(axis.text.x = element_text(angle = 90, size = 7, vjust = 0.5),
+        panel.grid = element_blank(), legend.position = "right")
+
+ggplotly(g_lq, tooltip = "text") |> pl_style(legend = TRUE, hovermode = "closest")
+```
+
+::: {.card title="Des identités régionales très localisées" width="30%"}
+L'**indice de localisation** rapporte la fréquence du prénom dans un département à sa
+fréquence nationale (1 = moyenne ; 10 = dix fois plus fréquent).
+
+- Les **prénoms basques** (Eneko, Xabi, Antton) atteignent des indices de
+  `r lqv("ENEKO", "64")` à `r lqv("XABI", "64")` dans les Pyrénées-Atlantiques (64) et
+  restent quasi absents ailleurs : un marqueur identitaire qui ne s'exporte pas.
+- Les **prénoms corses** sont les plus localisés de France : Lisandru y est
+  `r lqv("LISANDRU", "20")` fois plus fréquent qu'en moyenne, Ange `r lqv("ANGE", "20")` fois ;
+  Ange garde un indice de `r lqv("ANGE", "83")` dans le Var et `r lqv("ANGE", "13")` dans les
+  Bouches-du-Rhône — trace de l'émigration insulaire vers le continent.
+- Les **prénoms bretons** ont des indices plus modestes (Ronan : `r lqv("RONAN", "29")` dans le
+  Finistère ; Yann : `r lqv("YANN", "22")` dans les Côtes-d'Armor) précisément parce qu'ils ont
+  **essaimé** dans toute la France : c'est le seul répertoire régional devenu une mode
+  nationale (Maël, Maëlle, Malo).
+- Maylis (Landes, `r lqv("MAYLIS", "40")`) et Mireille ou Magali (Alpes-de-Haute-Provence)
+  signalent les fonds gascon et provençal.
+:::
+
+## Row {height="620px"}
+
+```{r}
+#| include: false
+# Diffusion temporelle : année du pic (moyenne mobile 5 ans) par département
+pic_dpt <- function(p, sx) {
+  d <- dt_dpt[prenom == p & sexe == sx, .(n = sum(nombre)), by = .(dpt, annee)]
+  d <- merge(naiss_dpt_an[sexe == sx, .(dpt, annee, tot)], d,
+             by = c("dpt", "annee"), all.x = TRUE)[is.na(n), n := 0]
+  setorder(d, dpt, annee)
+  d[, pm := frollmean(1000 * n / tot, 5, align = "center"), by = dpt]
+  ok <- d[, .(total = sum(n)), by = dpt][total >= 30, dpt]
+  res <- d[dpt %in% ok & !is.na(pm), .SD[which.max(pm)], by = dpt][, .(dpt, annee_pic = annee, pm)]
+  vers_geo(res)
+}
+
+pics <- list(KEVIN = pic_dpt("KEVIN", "Garçons"), NOLWENN = pic_dpt("NOLWENN", "Filles"),
+             ENZO = pic_dpt("ENZO", "Garçons"), "LÉA" = pic_dpt("LÉA", "Filles"))
+pk  <- function(p, d) pics[[p]][dpt == d, annee_pic]
+pkm <- function(p) round(median(pics[[p]]$annee_pic))
+
+carte_pic <- function(p, sx) {
+  d <- pic_dpt(p, sx) |> left_join(dpt_noms, by = c("dpt" = "code"))
+  d <- d[!is.na(nom)]
+  plot_ly(d, type = "choropleth", geojson = geo, featureidkey = "properties.code",
+          locations = ~dpt, z = ~annee_pic,
+          colorscale = list(c(0, "#cde2fb"), c(0.5, "#3987e5"), c(1, "#0d366b")),
+          marker = list(line = list(color = "white", width = 0.5)),
+          text = ~paste0("<b>", nom, "</b><br>Pic en ", annee_pic, "<br>",
+                         number(pm, accuracy = 0.01, decimal.mark = ","), " ‰ au pic"),
+          hoverinfo = "text",
+          colorbar = list(title = "Année<br>du pic", tickformat = "d",
+                          dtick = max(1, ceiling(diff(range(d$annee_pic)) / 6)))) |>
+    layout(geo = list(fitbounds = "locations", visible = FALSE, projection = list(type = "mercator"))) |>
+    pl_style(legend = FALSE, hovermode = "closest")
+}
+```
+
+::: {.panel-tabset title="Diffusion géographique d'une mode : année du pic par département"}
+
+### Kevin
+
+```{r}
+carte_pic("KEVIN", "Garçons")
+```
+
+### Nolwenn
+
+```{r}
+carte_pic("NOLWENN", "Filles")
+```
+
+### Enzo
+
+```{r}
+carte_pic("ENZO", "Garçons")
+```
+
+### Léa
+
+```{r}
+carte_pic("LÉA", "Filles")
+```
+
+:::
+
+::: {.card title="Comment une mode se propage" width="30%"}
+Chaque département est coloré selon **l'année où le prénom y atteint son pic**
+(fréquence lissée sur 5 ans) : les teintes claires signalent les territoires
+*précurseurs*, les teintes foncées les *suiveurs*.
+
+- **Nolwenn** illustre une diffusion **centrifuge** : pic dès `r pk("NOLWENN","56")` dans le
+  Morbihan, puis vers `r pk("NOLWENN","29")` dans le reste de la Bretagne et autour de
+  `r pkm("NOLWENN")` (médiane) dans le reste du pays — le prénom régional devient prénom
+  « à la mode » avec une génération de retard.
+- **Enzo** part du **Midi méditerranéen** (Bouches-du-Rhône `r pk("ENZO","13")`,
+  Alpes-Maritimes `r pk("ENZO","06")`) avant de gagner le Nord (médiane `r pkm("ENZO")`) :
+  une diffusion sud → nord portée par l'attrait des sonorités italiennes.
+- **Kevin** (médiane `r pkm("KEVIN")`) et **Léa** (médiane `r pkm("LÉA")`) culminent presque
+  partout la même année : les modes de l'ère télévisuelle sont **nationales et simultanées**,
+  Paris (`r pk("LÉA","75")` pour Léa) jouant au mieux le rôle de précurseur.
+
+Le prénom reste ainsi un **traceur sociologique** remarquable : la vitesse et la
+géographie de sa diffusion renseignent sur les canaux d'influence culturelle
+(proximité régionale vs. culture médiatique nationale).
+:::
