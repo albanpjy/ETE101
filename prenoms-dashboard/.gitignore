@@ -3,6 +3,5 @@
 build
 node_modules
 .DS_Store
-# données téléchargées / générées : reproduites par `npm run data`
+# archives brutes INSEE (les Parquet normalisés sont versionnés)
 data/raw/
-data/*.parquet

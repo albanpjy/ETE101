@@ -289,7 +289,9 @@ def main() -> None:
         dpt_path = RAW / "demo_dpt.csv"
         make_demo(dpt_path)
         meta["source"] = "DONNÉES FICTIVES (mode démo)"
-    elif not dpt_path:
+    elif dpt_path:
+        meta["edition"] = dpt_path.name
+    if not args.demo and not args.dpt_file:
         dpt_url, nat_url = args.dpt_url, args.nat_url
         if not dpt_url:
             ds = find_dataset()

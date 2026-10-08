@@ -103,13 +103,15 @@ order by r.annee
 
 ## Les prénoms météores
 
-Certains prénoms connaissent une gloire fulgurante : une grande partie de leurs porteurs sont nés la même année. On mesure ici la part du total des naissances concentrée sur l'année du pic (prénoms donnés au moins 5 000 fois).
+Certains prénoms connaissent une gloire fulgurante : une grande partie de leurs porteurs sont nés la même année. On mesure ici la part du total des naissances concentrée sur l'année du pic (prénoms donnés au moins 5 000 fois, dont le pic remonte à plus de 5 ans).
 
 ```sql meteores
 select libelle as prenom, genre, total, annee_pic, naissances_pic,
        naissances_pic::double / total as concentration
 from prenoms.catalogue
 where total >= 5000
+  -- un pic sur les dernières années signale un prénom encore en hausse, pas un météore
+  and annee_pic <= (select annee_max - 5 from prenoms.meta)
 order by concentration desc
 limit 20
 ```

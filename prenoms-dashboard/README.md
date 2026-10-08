@@ -66,5 +66,6 @@ components/FranceMap.svelte : carte choroplèthe des départements (SVG, DROM en
 - Secret statistique INSEE : au niveau national, les prénoms attribués moins de 3 fois une année sont regroupés en `_PRENOMS_RARES`.
   Au niveau départemental, un prénom n'apparaît que s'il a été donné au moins 3 fois sur l'année et 20 fois sur la période ; sinon l'année et/ou le département sont masqués (`XXXX` / `XX`).
   Les totaux de naissances incluent ces prénoms rares, les classements les excluent.
-- Les fichiers bruts (`data/raw/`) et les Parquet (`data/*.parquet`) ne sont pas versionnés : on les régénère avec `npm run data`.
+- Les Parquet de `data/` sont versionnés (édition chargée : `dpt2022_csv.zip`, 1900-2022). Les archives brutes (`data/raw/`) ne le sont pas.
+- Sans le fichier national, les séries nationales sont agrégées depuis le fichier départemental : les naissances dont l'année est masquée (≈ 9 M) n'y figurent pas, d'où des totaux annuels légèrement sous-estimés. Ajoutez `--nat-file nat2022_csv.zip` pour des chiffres nationaux exacts.
 - Fond de carte : [svg-maps](https://github.com/VictorCazanave/svg-maps) (`@svg-maps/france.departments`, CC-BY-4.0).

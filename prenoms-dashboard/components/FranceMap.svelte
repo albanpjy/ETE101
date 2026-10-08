@@ -52,6 +52,8 @@
 	function build(rows) {
 		const byCode = new Map();
 		for (const r of rows ?? []) byCode.set(String(r[code]), r);
+		// Corse codée « 20 » (avant 1976 / certaines éditions INSEE) : on la reporte sur 2A et 2B
+		if (byCode.has('20')) for (const c of ['2A', '2B']) if (!byCode.has(c)) byCode.set(c, byCode.get('20'));
 		let breaks = [];
 		let cats = [];
 		if (mode === 'categorical') {
@@ -67,9 +69,11 @@
 		return { byCode, breaks, cats };
 	}
 
+	const isHl = (id) => highlight != null && (String(highlight) === id || (String(highlight) === '20' && (id === '2A' || id === '2B')));
+
 	function fillFor(model, id) {
 		const r = model.byCode.get(id);
-		if (mode === 'locator') return highlight && String(highlight) === id ? 'var(--fm-cat-1)' : 'var(--fm-empty)';
+		if (mode === 'locator') return isHl(id) ? 'var(--fm-cat-1)' : 'var(--fm-empty)';
 		if (!r) return 'var(--fm-empty)';
 		if (mode === 'categorical') {
 			const i = model.cats.findIndex((c) => c.c === r[category]);
@@ -103,7 +107,7 @@
 						d={loc.path}
 						fill={fillFor(model, loc.id)}
 						class="fm-dep"
-						class:fm-hl={highlight && String(highlight) === loc.id}
+						class:fm-hl={isHl(loc.id)}
 						class:fm-hover={hover === loc.id}
 						on:mousemove={(e) => move(e, loc.id)}
 						on:mouseleave={() => (hover = null)}
@@ -116,7 +120,7 @@
 							width="44" height="34" rx="4"
 							fill={fillFor(model, d.id)}
 							class="fm-dep"
-							class:fm-hl={highlight && String(highlight) === d.id}
+							class:fm-hl={isHl(d.id)}
 							class:fm-hover={hover === d.id}
 							on:mousemove={(e) => move(e, d.id)}
 							on:mouseleave={() => (hover = null)}
