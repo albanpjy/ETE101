@@ -533,8 +533,12 @@ rares, non classables). La *forme* du prénom prime sur sa racine : *Jean* est h
   l'histoire migratoire, mais aussi l'attrait général pour les sonorités méridionales.
 - **Régional / celtique** : une première vague dans les années 1950 (Alain, Hervé,
   Yannick), puis la diffusion des formes bretonnes (Maël, Nolwenn, Erwan).
-- La part **« autres »** (`r p("Autres / non classés", 2022)` en 2022) grossit avec les
-  créations récentes (Jade, Lilou, Ambre, Mila) : le stock se libère de toute filiation.
+- **En gris : « Autres / non classés »** (`r p("Autres / non classés", 1960)` en 1960,
+  `r p("Autres / non classés", 2022)` en 2022). Cette catégorie regroupe les prénoms qu'aucune
+  des 7 familles ne décrit : créations récentes ou prénoms-mots (Jade, Ambre, Lilou, Mila,
+  Maëva), prénoms d'autres aires culturelles (slaves : Sacha, Nadia, Natacha ; japonais :
+  Kenzo ; polynésiens…) et formes non reconnues par le dictionnaire. Sa croissance est en
+  soi un résultat : le prénom se détache de plus en plus de toute filiation linguistique.
 :::
 
 ## Row {height="640px"}
@@ -797,27 +801,28 @@ carto_sel <- tribble(
   mutate(sexe = factor(sexe, levels = levels(dt$sexe))) |>
   as.data.table()
 
-carto <- dt_dpt[carto_sel, on = .(prenom, sexe), nomatch = 0]
-carto[, periode := fifelse(annee >= 2020, "2020–2022",
-                           paste0(annee %/% 10 * 10, "–", annee %/% 10 * 10 + 9))]
+# Carte interactive : TOUS les prénoms de l'explorateur (≥ 300 naissances cumulées).
+# Encodage creux et compact (≈ 5 Mo) : pour chaque prénom × sexe, une chaîne
+# « période:département:effectif » limitée aux cellules non nulles. Les ‰ sont
+# calculés côté navigateur à partir des naissances totales par département.
+periodes_lab <- c(paste0(seq(1900, 2010, 10), "–", seq(1909, 2019, 10)), "2020–2022")
+dpts_metro <- sort(setdiff(unique(dt_dpt$dpt), c("971", "972", "973", "974", "976")))
 
-agg_periode <- function(d, tot) {
-  num <- d[, .(n = sum(nombre)), by = .(prenom, sexe, groupe, dpt, periode)]
-  den <- tot[, .(tot = sum(tot)), by = .(dpt, sexe, periode)]
-  merge(num, den, by = c("dpt", "sexe", "periode"))[, pm := 1000 * n / tot]
-}
-naiss_dpt_an[, periode := fifelse(annee >= 2020, "2020–2022",
-                                  paste0(annee %/% 10 * 10, "–", annee %/% 10 * 10 + 9))]
-carto_p <- agg_periode(carto, naiss_dpt_an)
-carto_t <- agg_periode(copy(carto)[, periode := "1900–2022"],
-                       copy(naiss_dpt_an)[, periode := "1900–2022"])
-carto_all <- vers_geo(rbind(carto_p, carto_t))
-carto_all[, key := paste0(prenom, " — ", tolower(groupe))]
+carte_n <- dt_dpt[dpt %in% dpts_metro][
+  explo_series[, .(prenom, sexe = factor(sexe, levels = levels(dt$sexe)), key)],
+  on = .(prenom, sexe), nomatch = 0][
+  , .(n = sum(nombre)), by = .(key, p = pmin(annee %/% 10 - 190L, 12L), i = match(dpt, dpts_metro) - 1L)]
+setorder(carte_n, key, p, i)
+carte_series <- carte_n[, .(s = paste(p, i, n, sep = ":", collapse = ",")), by = key]
 
-ojs_define(carte_raw = carto_all[, .(key, dpt, periode, n, pm = round(pm, 3))],
-           geo_fr = geo,
-           dpt_noms_raw = dpt_noms,
-           cles_carte = unique(carto_all[order(groupe, prenom)]$key))
+carte_tot <- naiss_dpt_an[dpt %in% dpts_metro,
+                          .(t = sum(tot)), by = .(sexe, p = pmin(annee %/% 10 - 190L, 12L), dpt)]
+carte_tot <- carte_tot[order(sexe, p, match(dpt, dpts_metro))][
+  , .(t = paste(t, collapse = ",")), by = .(sexe = as.character(sexe), p)]
+
+ojs_define(carte_series = carte_series, carte_tot = carte_tot,
+           carte_dpts = dpts_metro, carte_periodes = periodes_lab,
+           geo_fr = geo, dpt_noms_raw = dpt_noms)
 ```
 
 ## Row {height="640px"}
@@ -828,21 +833,29 @@ ojs_define(carte_raw = carto_all[, .(key, dpt, periode, n, pm = round(pm, 3))],
 
 ```{ojs}
 //| echo: false
-viewof prenomCarte = Inputs.select(cles_carte, {label: "Prénom", value: "NOLWENN — breton"})
+viewof filtreCarte = Inputs.text({label: "Filtrer la liste", placeholder: "ex. : NOLW, ENEK…"})
+```
+
+```{ojs}
+//| echo: false
+viewof prenomCarte = Inputs.select(
+  clesCarte.filter(k => k.includes(filtreCarte.toUpperCase())),
+  {label: "Prénom", size: 8,
+   value: clesCarte.includes("NOLWENN (F)") && "NOLWENN (F)".includes(filtreCarte.toUpperCase()) ? "NOLWENN (F)" : undefined})
 ```
 
 ```{ojs}
 //| echo: false
 viewof periodeCarte = Inputs.select(
-  ["1900–2022", ...periodes],
+  ["1900–2022", ...carte_periodes],
   {label: "Période", value: "1900–2022"})
 ```
 
 ```{ojs}
 //| echo: false
 md`<small>Valeur : nombre de naissances portant ce prénom pour **1 000 naissances du même
-sexe** dans le département sur la période. Les départements d'outre-mer ne sont pas
-cartographiés. Corse : données INSEE agrégées (« 20 ») appliquées à 2A et 2B.</small>`
+sexe** dans le département sur la période. ${fmtN(clesCarte.length)} prénoms disponibles
+(≥ 300 naissances cumulées). Les départements d'outre-mer ne sont pas cartographiés. Corse : données INSEE agrégées (« 20 ») appliquées à 2A et 2B.</small>`
 ```
 
 :::
@@ -891,14 +904,37 @@ Plot.plot({
 ```{ojs}
 //| echo: false
 //| output: false
-carte = transpose(carte_raw)
 geoFr = geo_fr
 dptNom = new Map(transpose(dpt_noms_raw).map(d => [d.code, d.nom]))
-periodes = [...new Set(carte.map(d => d.periode))].filter(p => p !== "1900–2022").sort()
-lignesCarte = new Map(carte.filter(d => d.key === prenomCarte && d.periode === periodeCarte)
-                           .map(d => [d.dpt, d]))
+seriesCarte = new Map(transpose(carte_series).map(d => [d.key, d.s]))
+clesCarte = cles.filter(k => seriesCarte.has(k))
+totCarte = {
+  const m = new Map();
+  for (const d of transpose(carte_tot)) m.set(`${d.sexe}|${d.p}`, d.t.split(",").map(Number));
+  return m;
+}
+lignesCarte = {
+  const out = new Map();
+  if (!prenomCarte) return out;
+  const sexe = prenomCarte.endsWith("(F)") ? "Filles" : "Garçons";
+  const pSel = carte_periodes.indexOf(periodeCarte);           // -1 = toute la période
+  const ps = pSel < 0 ? d3.range(carte_periodes.length) : [pSel];
+  const num = new Float64Array(carte_dpts.length);
+  for (const cell of (seriesCarte.get(prenomCarte) ?? "").split(",")) {
+    if (!cell) continue;
+    const [p, i, n] = cell.split(":").map(Number);
+    if (ps.includes(p)) num[i] += n;
+  }
+  carte_dpts.forEach((code, i) => {
+    const den = d3.sum(ps, p => (totCarte.get(`${sexe}|${p}`) ?? [])[i] ?? 0);
+    const r = {dpt: code, n: num[i], pm: den > 0 ? 1000 * num[i] / den : 0};
+    if (code === "20") { out.set("2A", {...r, dpt: "2A"}); out.set("2B", {...r, dpt: "2B"}); }
+    else out.set(code, r);
+  });
+  return out;
+}
 valeurs = new Map([...lignesCarte].map(([k, d]) => [k, d.pm]))
-top15 = [...lignesCarte.values()].filter(d => d.dpt !== "2B")
+top15 = [...lignesCarte.values()].filter(d => d.dpt !== "2B" && d.n > 0)
   .map(d => ({...d, nom: d.dpt === "2A" ? "Corse" : (dptNom.get(d.dpt) ?? d.dpt)}))
   .sort((a, b) => b.pm - a.pm).slice(0, 15)
 ```
