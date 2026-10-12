@@ -31,7 +31,7 @@ select * from prenoms.catalogue where prenom = '${inputs.prenom.value}'
 ```
 
 ```sql meilleur_rang
-select min(rang) as rang, arg_min(annee, rang) as annee
+select min(rang) as rang, arg_min(annee, rang * 10000 + annee) as annee
 from prenoms.rangs
 where prenom = '${inputs.prenom.value}'
   and ('${inputs.sexe}' = 'T' or sexe = '${inputs.sexe}')

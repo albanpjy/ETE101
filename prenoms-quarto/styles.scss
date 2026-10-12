@@ -1,0 +1,59 @@
+/*-- scss:defaults --*/
+$primary: #2a78d6;
+$body-bg: #f7f7f5;
+$body-color: #1f1f1d;
+$font-family-sans-serif: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+$navbar-bg: #13427c;
+$border-radius: .6rem;
+
+/*-- scss:rules --*/
+.card {
+  border: 1px solid #e7e6e1;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+}
+
+.card-header {
+  font-weight: 600;
+  font-size: .9rem;
+  color: #52514e;
+  background: transparent;
+  border-bottom: 1px solid #efeee9;
+}
+
+.bslib-value-box .value-box-value {
+  font-weight: 700;
+  font-size: clamp(1.4rem, 2.1vw, 2.1rem);
+  line-height: 1.15;
+}
+
+.bslib-value-box .value-box-title {
+  font-size: .85rem;
+}
+
+.bslib-value-box .value-box-showcase .fa,
+.bslib-value-box .value-box-showcase svg {
+  font-size: 2.2rem;
+  max-height: 2.6rem;
+}
+
+.sidebar .shiny-input-container {
+  margin-bottom: 1rem;
+}
+
+table.dataTable td,
+table.dataTable th {
+  font-size: .85rem;
+}
+
+.apropos p {
+  max-width: 70rem;
+  line-height: 1.6;
+}
+
+// Tuiles étroites (pages avec barre latérale) : bslib empile l'icône au-dessus du chiffre,
+// qui se retrouve coupé. On masque simplement l'icône dans ce cas.
+@container bslib-value-box (max-width: 300px) {
+  .bslib-value-box .value-box-showcase {
+    display: none !important;
+  }
+}

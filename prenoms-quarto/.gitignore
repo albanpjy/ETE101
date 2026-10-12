@@ -1,0 +1,9 @@
+# sorties de rendu Quarto (regénérées par `quarto serve`)
+prenoms.html
+prenoms_files/
+.quarto/
+# archives brutes INSEE (les Parquet normalisés de data/ sont versionnés)
+data/raw/
+.Rhistory
+.RData
+.Rproj.user/

@@ -1,0 +1,701 @@
+---
+title: "Les prénoms en France depuis 1900"
+author: "Données INSEE · data.gouv.fr"
+lang: fr
+format:
+  dashboard:
+    theme: [cosmo, styles.scss]
+    orientation: rows
+    scrolling: true
+    nav-buttons:
+      - icon: database
+        href: https://www.data.gouv.fr/fr/datasets/fichier-des-prenoms-depuis-1900/
+        aria-label: Données sur data.gouv.fr
+server: shiny
+---
+
+```{r}
+#| context: setup
+#| include: false
+suppressPackageStartupMessages({
+  library(shiny)
+  library(bslib)
+})
+source("R/data.R")
+source("R/viz.R")
+
+CHOIX_PRENOMS <- q("select prenom, libelle, total from catalogue order by total desc")
+CHOIX_PRENOMS <- setNames(CHOIX_PRENOMS$prenom,
+                          sprintf("%s (%s)", CHOIX_PRENOMS$libelle, fnum(CHOIX_PRENOMS$total)))
+CHOIX_DPT <- q("select dpt, libelle_dpt from departements order by dpt")
+CHOIX_DPT <- setNames(CHOIX_DPT$dpt, CHOIX_DPT$libelle_dpt)
+DECENNIES <- seq(ANNEE_MIN %/% 10 * 10, ANNEE_MAX %/% 10 * 10, by = 10)
+CHOIX_SEXE <- c("Filles" = "F", "Garçons" = "M")
+
+# Clause SQL « sexe » : 'T' = tous
+filtre_sexe <- function(s) if (identical(s, "T")) "1 = 1" else sprintf("sexe = '%s'", if (s == "F") "F" else "M")
+
+KPI <- q("
+  select
+    (select sum(naissances) from naissances) as naissances,
+    (select count(*) from catalogue) as prenoms,
+    (select annee from naissances group by annee order by sum(naissances) desc limit 1) as annee_record,
+    (select max(s) from (select sum(naissances) s from naissances group by annee)) as naissances_record,
+    (select libelle from catalogue order by total_f desc limit 1) as top_f,
+    (select max(total_f) from catalogue) as top_f_n,
+    (select libelle from catalogue order by total_m desc limit 1) as top_m,
+    (select max(total_m) from catalogue) as top_m_n")
+```
+
+# Vue d'ensemble
+
+## Row {height="165px"}
+
+```{r}
+value_box(
+  title = "Naissances recensées",
+  value = paste(fnum(KPI$naissances / 1e6, 1), "M"),
+  p(sprintf("%s prénoms différents, %d–%d", fnum(KPI$prenoms), ANNEE_MIN, ANNEE_MAX)),
+  showcase_layout = "left center", showcase = icon("baby"), theme = "primary"
+)
+```
+
+```{r}
+value_box(
+  title = "Année record",
+  value = KPI$annee_record,
+  p(paste(fnum(KPI$naissances_record), "naissances")),
+  showcase_layout = "left center", showcase = icon("calendar-check"), theme = value_box_theme(bg = "#ffffff", fg = "#1d5dab")
+)
+```
+
+```{r}
+value_box(
+  title = "Prénom féminin n°1 (cumul)",
+  value = KPI$top_f,
+  p(paste(fnum(KPI$top_f_n), "naissances")),
+  showcase_layout = "left center", showcase = icon("venus"), theme = value_box_theme(bg = "#fdeee7", fg = "#9c3a12")
+)
+```
+
+```{r}
+value_box(
+  title = "Prénom masculin n°1 (cumul)",
+  value = KPI$top_m,
+  p(paste(fnum(KPI$top_m_n), "naissances")),
+  showcase_layout = "left center", showcase = icon("mars"), theme = value_box_theme(bg = "#e8f1fc", fg = "#13427c")
+)
+```
+
+## Row {height="420px"}
+
+```{r}
+#| title: "Naissances recensées par année — les guerres et le baby-boom se lisent immédiatement"
+serie_sexe(q("select * from naissances"), "naissances", type = "area")
+```
+
+## Row {height="620px"}
+
+### Column {width="22%"}
+
+```{r}
+#| title: "Choisir une année"
+sliderInput("annee_top", NULL, min = ANNEE_MIN, max = ANNEE_MAX, value = ANNEE_MAX,
+            step = 1, sep = "", ticks = FALSE, width = "100%")
+p(class = "text-muted small",
+  "Δ rang : places gagnées (+) ou perdues (−) par rapport à l'année précédente. Part : part des naissances du même sexe.")
+```
+
+### Column {.tabset}
+
+```{r}
+#| title: "Filles"
+DTOutput("top_f")
+```
+
+```{r}
+#| title: "Garçons"
+DTOutput("top_m")
+```
+
+## Row {height="380px"}
+
+```{r}
+#| title: "Prénoms distincts attribués par an"
+serie_sexe(q("select * from naissances"), "prenoms_distincts")
+```
+
+```{r}
+#| title: "Part des naissances portant un prénom du top 10"
+serie_sexe(q("select annee, sexe, sum(pour_mille) filter (where rang <= 10) / 1000 as part
+              from rangs group by all order by annee"), "part", fmt_y = ".0%")
+```
+
+## Row {height="520px"}
+
+```{r}
+#| title: "Les n°1 de chaque année"
+tableau(
+  q("select annee as Année,
+            max(libelle) filter (where sexe = 'F') as \"Fille n°1\",
+            max(nombre) filter (where sexe = 'F') as \"Naissances \",
+            max(libelle) filter (where sexe = 'M') as \"Garçon n°1\",
+            max(nombre) filter (where sexe = 'M') as Naissances
+     from rangs where rang = 1 group by annee order by annee desc"),
+  pageLength = 12, recherche = TRUE
+) |> formatRound(c(3, 5), digits = 0, mark = " ")
+```
+
+# Explorer un prénom
+
+## {.sidebar}
+
+```{r}
+selectizeInput("prenom", "Prénom", choices = NULL)
+radioButtons("sexe_p", "Sexe", c("Tous" = "T", CHOIX_SEXE), inline = TRUE)
+selectInput("periode", "Période (carte & départements)",
+            c("Toute la période" = 0, setNames(DECENNIES, paste0(DECENNIES, "s"))))
+hr()
+selectizeInput("comparer", "Prénoms à comparer", choices = NULL, multiple = TRUE,
+               options = list(maxItems = 8, placeholder = "Tapez un prénom…"))
+```
+
+## Column
+
+### Row {height="165px"}
+
+```{r}
+value_box(title = "Naissances depuis 1900", value = textOutput("vb_total"),
+          showcase_layout = "left center", showcase = icon("baby"), theme = "primary")
+```
+
+```{r}
+value_box(title = "Année du pic", value = textOutput("vb_pic"), textOutput("vb_pic_n"),
+          showcase_layout = "left center", showcase = icon("chart-line"), theme = value_box_theme(bg = "#ffffff", fg = "#1d5dab"))
+```
+
+```{r}
+value_box(title = "Meilleur rang national", value = textOutput("vb_rang"), textOutput("vb_rang_annee"),
+          showcase_layout = "left center", showcase = icon("trophy"), theme = value_box_theme(bg = "#fff6e0", fg = "#8a5a00"))
+```
+
+```{r}
+value_box(title = "Part de filles", value = textOutput("vb_part_f"), textOutput("vb_genre"),
+          showcase_layout = "left center", showcase = icon("venus-mars"), theme = value_box_theme(bg = "#fdeee7", fg = "#9c3a12"))
+```
+
+### Row {height="440px"}
+
+#### Column {.tabset}
+
+```{r}
+#| title: "Naissances"
+plotlyOutput("evol_n")
+```
+
+```{r}
+#| title: "Part des naissances"
+plotlyOutput("evol_part")
+```
+
+```{r}
+#| title: "Rang national"
+plotlyOutput("evol_rang")
+```
+
+### Row {height="640px"}
+
+#### Column {width="55%"}
+
+```{r}
+#| title: "Fréquence du prénom par département (naissances pour 1 000)"
+plotlyOutput("carte_prenom", height = "100%")
+```
+
+#### Column {width="45%"}
+
+```{r}
+#| title: "Départements où il est le plus surreprésenté (indice 1 = moyenne nationale)"
+DTOutput("geo_prenom")
+```
+
+### Row {height="440px"}
+
+```{r}
+#| title: "Comparer plusieurs prénoms (filles et garçons confondus)"
+plotlyOutput("comparaison")
+```
+
+# Explorer un département
+
+## {.sidebar}
+
+```{r}
+selectInput("dpt", "Département", CHOIX_DPT, selected = "75")
+selectInput("decennie", "Décennie", setNames(rev(DECENNIES), paste0(rev(DECENNIES), "s")),
+            selected = max(DECENNIES[DECENNIES <= ANNEE_MAX - 9], DECENNIES[1]))
+radioButtons("sexe_d", "Sexe", CHOIX_SEXE, inline = TRUE)
+plotlyOutput("carte_situation", height = "220px")
+```
+
+## Column
+
+### Row {height="165px"}
+
+```{r}
+value_box(title = "Naissances recensées", value = textOutput("vb_d_naiss"), textOutput("vb_d_nom"),
+          showcase_layout = "left center", showcase = icon("map-location-dot"), theme = "primary")
+```
+
+```{r}
+value_box(title = "Prénoms distincts", value = textOutput("vb_d_prenoms"),
+          showcase_layout = "left center", showcase = icon("list-ol"), theme = value_box_theme(bg = "#ffffff", fg = "#1d5dab"))
+```
+
+```{r}
+value_box(title = "Fille n°1 (cumul)", value = textOutput("vb_d_f"),
+          showcase_layout = "left center", showcase = icon("venus"), theme = value_box_theme(bg = "#fdeee7", fg = "#9c3a12"))
+```
+
+```{r}
+value_box(title = "Garçon n°1 (cumul)", value = textOutput("vb_d_m"),
+          showcase_layout = "left center", showcase = icon("mars"), theme = value_box_theme(bg = "#e8f1fc", fg = "#13427c"))
+```
+
+### Row {height="380px"}
+
+```{r}
+#| title: "Naissances recensées par année dans le département"
+plotlyOutput("d_naissances")
+```
+
+### Row {height="720px"}
+
+```{r}
+#| title: "Palmarès de la décennie"
+DTOutput("d_palmares")
+```
+
+```{r}
+#| title: "Prénoms typiques : indice de spécificité (fréquence locale ÷ fréquence nationale, ≥ 30 naissances)"
+plotlyOutput("d_specifiques")
+```
+
+### Row {height="520px"}
+
+```{r}
+#| title: "Les n°1 de chaque décennie"
+DTOutput("d_numero_un")
+```
+
+# La France des prénoms
+
+## {.sidebar}
+
+```{r}
+sliderInput("annee_c", "Année", min = ANNEE_MIN, max = ANNEE_MAX, value = ANNEE_MAX,
+            step = 1, sep = "", ticks = FALSE)
+radioButtons("sexe_c", "Sexe", CHOIX_SEXE, inline = TRUE)
+p(class = "text-muted small",
+  "Survolez un département pour le détail. Les cinq prénoms qui l'emportent le plus souvent sont colorés, les autres en gris.")
+```
+
+## Column
+
+### Row {height="680px"}
+
+#### Column {width="60%"}
+
+```{r}
+#| title: "Prénom le plus donné par département"
+plotlyOutput("carte_top", height = "100%")
+```
+
+#### Column {width="40%" .tabset}
+
+```{r}
+#| title: "Départements remportés"
+DTOutput("top_resume")
+```
+
+```{r}
+#| title: "Détail par département"
+DTOutput("top_detail")
+```
+
+### Row {height="600px"}
+
+```{r}
+#| title: "Naissances recensées"
+plotlyOutput("carte_naiss", height = "100%")
+```
+
+```{r}
+#| title: "Part des enfants au prénom « rare » localement (non publié au niveau départemental)"
+plotlyOutput("carte_rares", height = "100%")
+```
+
+# Tendances & curiosités
+
+## {.sidebar}
+
+```{r}
+sliderInput("periode_t", "Comparer deux années", min = ANNEE_MIN, max = ANNEE_MAX,
+            value = c(max(ANNEE_MIN, ANNEE_MAX - 15), ANNEE_MAX), step = 1, sep = "", ticks = FALSE)
+radioButtons("sexe_t", "Sexe", CHOIX_SEXE, inline = TRUE)
+```
+
+## Column
+
+### Row {height="460px"}
+
+```{r}
+#| title: "Plus fortes progressions (écart de fréquence, naissances pour 1 000)"
+plotlyOutput("hausses")
+```
+
+```{r}
+#| title: "Plus fortes baisses (écart de fréquence, naissances pour 1 000)"
+plotlyOutput("baisses")
+```
+
+### Row {height="560px"}
+
+```{r}
+#| title: "La course au sommet : fréquence (‰) du top 15 de l'année d'arrivée sur 30 ans"
+plotlyOutput("course")
+```
+
+### Row {height="560px"}
+
+```{r}
+#| title: "Prénoms météores : part des porteurs nés l'année du pic (≥ 5 000 naissances, pic de plus de 5 ans)"
+tableau(
+  q("select libelle as Prénom, genre as Genre, annee_pic as \"Année du pic\",
+            naissances_pic as \"Naissances au pic\", total as Total,
+            naissances_pic::double / total as \"Part au pic\"
+     from catalogue
+     where total >= 5000 and annee_pic <= ? - 5
+     order by \"Part au pic\" desc limit 20", ANNEE_MAX),
+  pageLength = 10
+) |>
+  formatRound(c(4, 5), digits = 0, mark = " ") |>
+  formatPercentage(6, digits = 1, dec.mark = ",") |>
+  formatStyle(6, background = styleColorBar(c(0, 0.5), "#f6c2ab"), backgroundSize = "98% 70%",
+              backgroundRepeat = "no-repeat", backgroundPosition = "center")
+```
+
+```{r}
+#| title: "Les 20 prénoms mixtes les plus portés (10 à 90 % de filles)"
+local({
+  m <- q("select libelle, total, part_f from catalogue
+          where genre = 'Mixte' and total >= 2000 order by total desc limit 20")
+  m$libelle <- factor(m$libelle, levels = rev(m$libelle))
+  plot_ly(m, y = ~libelle, x = ~part_f, type = "bar", orientation = "h", name = "Filles",
+          marker = list(color = COUL_SEXE[["Filles"]]),
+          hovertemplate = "%{y} : %{x:.0%} de filles<extra></extra>") |>
+    add_bars(x = ~(1 - part_f), name = "Garçons", marker = list(color = COUL_SEXE[["Garçons"]]),
+             hovertemplate = "%{y} : %{x:.0%} de garçons<extra></extra>") |>
+    style_plotly() |>
+    layout(barmode = "stack", hovermode = "closest", bargap = 0.25,
+           xaxis = list(tickformat = ".0%", range = c(0, 1)), yaxis = list(title = "", gridcolor = "rgba(0,0,0,0)"))
+})
+```
+
+### Row {height="380px"}
+
+```{r}
+#| title: "Longueur moyenne du prénom (lettres)"
+FORME <- q("select annee, sexe,
+                   sum(length(libelle) * nombre)::double / sum(nombre) as longueur,
+                   coalesce(sum(nombre) filter (where libelle like '%-%'), 0)::double / sum(nombre) as composes
+            from rangs group by all order by annee")
+serie_sexe(FORME, "longueur", fmt_y = ".1f")
+```
+
+```{r}
+#| title: "Part des prénoms composés (avec trait d'union)"
+serie_sexe(FORME, "composes", fmt_y = ".0%")
+```
+
+# À propos
+
+## Row
+
+```{r}
+#| title: "Sources & méthode"
+htmltools::div(class = "apropos",
+  htmltools::HTML(sprintf('
+<p><b>Données</b> : INSEE, <i>Fichier des prénoms</i> (état civil), diffusé sur
+<a href="https://www.data.gouv.fr/fr/datasets/fichier-des-prenoms-depuis-1900/" target="_blank">data.gouv.fr</a>.
+Édition chargée : <code>%s</code> — années %d à %d. Fichier départemental : niveau le plus fin (sexe × prénom × année × département).</p>
+<p><b>Secret statistique</b> : au niveau national, les prénoms donnés moins de 3 fois une année sont regroupés en « prénoms rares ».
+Au niveau départemental, un prénom n\'apparaît que s\'il a été donné au moins 3 fois sur l\'année et 20 fois sur la période ;
+sinon l\'année et/ou le département sont masqués. Les totaux de naissances incluent les prénoms rares, les classements les excluent.</p>
+<p><b>Sans fichier national</b>, les séries nationales sont agrégées depuis le fichier départemental : les naissances dont l\'année est masquée
+n\'y figurent pas (totaux annuels légèrement sous-estimés). <code>Rscript R/ingest.R --dpt-file … --nat-file …</code> corrige cela.</p>
+<p><b>Chaîne de traitement</b> : <code>R/ingest.R</code> (DuckDB) → Parquet (<code>data/</code>) → DuckDB en mémoire (<code>R/data.R</code>)
+→ Quarto Dashboard + Shiny (<code>prenoms.qmd</code>), graphiques plotly, tableaux DT.</p>
+<p><b>Fond de carte</b> : <a href="https://github.com/VictorCazanave/svg-maps" target="_blank">svg-maps</a> (CC-BY-4.0), converti par <code>R/contours.R</code>.</p>
+<p>Jumeau R du tableau de bord Evidence <code>prenoms-dashboard/</code>.</p>',
+  META$edition %||% META$source, ANNEE_MIN, ANNEE_MAX)))
+```
+
+```{r}
+#| context: server
+
+# ======================================================================= Vue d'ensemble
+top_annee <- reactive({
+  q("with r as (
+       select sexe, prenom, libelle, annee, nombre, rang, pour_mille,
+              lag(rang) over (partition by sexe, prenom order by annee) as rang_prec
+       from rangs where annee in (? - 1, ?)
+     )
+     select sexe, rang, libelle, nombre, pour_mille / 1000 as part, rang_prec - rang as gain
+     from r where annee = ? and rang <= 15 order by sexe, rang",
+    input$annee_top, input$annee_top, input$annee_top)
+})
+
+table_top <- function(d) {
+  d$gain <- ifelse(is.na(d$gain), "nouveau", ifelse(d$gain > 0, paste0("+", d$gain), ifelse(d$gain == 0, "=", d$gain)))
+  tableau(setNames(d[, c("rang", "libelle", "nombre", "part", "gain")],
+                   c("#", "Prénom", "Naissances", "Part", "Δ rang")), pageLength = 15) |>
+    formatRound(3, digits = 0, mark = " ") |>
+    formatPercentage(4, digits = 2, dec.mark = ",") |>
+    formatStyle("Δ rang", color = styleEqual(c("="), c("#8a8984"), default = NULL)) |>
+    formatStyle("Naissances", background = styleColorBar(c(0, max(d$nombre)), "#cfe0f6"),
+                backgroundSize = "98% 70%", backgroundRepeat = "no-repeat", backgroundPosition = "center")
+}
+output$top_f <- renderDT(table_top(subset(top_annee(), sexe == "F")))
+output$top_m <- renderDT(table_top(subset(top_annee(), sexe == "M")))
+
+# ======================================================================= Explorer un prénom
+updateSelectizeInput(session, "prenom", choices = CHOIX_PRENOMS, selected = "MARIE", server = TRUE)
+updateSelectizeInput(session, "comparer", choices = CHOIX_PRENOMS,
+                     selected = c("LÉA", "EMMA", "JADE", "LOUISE"), server = TRUE)
+
+prenom_sel <- reactive({ req(input$prenom); input$prenom })
+fiche <- reactive(q("select * from catalogue where prenom = ?", prenom_sel()))
+
+evolution <- reactive({
+  q(sprintf("select annee, sexe, nombre, pour_mille / 1000 as part, rang
+             from rangs where prenom = ? and %s order by annee", filtre_sexe(input$sexe_p)), prenom_sel())
+})
+
+output$vb_total <- renderText(fnum(fiche()$total))
+output$vb_pic <- renderText(fiche()$annee_pic)
+output$vb_pic_n <- renderText(paste(fnum(fiche()$naissances_pic), "naissances cette année-là"))
+meilleur <- reactive(q(sprintf("select min(rang) as rang, arg_min(annee, rang * 10000 + annee) as annee from rangs
+                                where prenom = ? and %s", filtre_sexe(input$sexe_p)), prenom_sel()))
+output$vb_rang <- renderText(if (is.na(meilleur()$rang)) "—" else paste0("n°", meilleur()$rang))
+output$vb_rang_annee <- renderText(if (is.na(meilleur()$annee)) "" else paste("atteint en", meilleur()$annee))
+output$vb_part_f <- renderText(fpct(fiche()$part_f, 0))
+output$vb_genre <- renderText(paste("Prénom", tolower(fiche()$genre)))
+
+output$evol_n <- renderPlotly(serie_sexe(evolution(), "nombre", type = "bar"))
+output$evol_part <- renderPlotly(serie_sexe(evolution(), "part", fmt_y = ".2%"))
+output$evol_rang <- renderPlotly(
+  serie_sexe(evolution(), "rang") |>
+    layout(yaxis = list(type = "log", autorange = "reversed", title = "rang (échelle log, 1 = le plus donné)"))
+)
+
+geo <- reactive({
+  debut <- as.integer(input$periode)
+  fin <- if (debut == 0) 9999L else debut + 9L
+  fs <- filtre_sexe(input$sexe_p)
+  q(sprintf("
+    with p as (
+      select dpt, sum(nombre) as n from detail
+      where prenom = ? and %s and annee between ? and ? group by dpt
+    ),
+    t as (
+      select dpt, sum(naissances) as total from naissances_dpt
+      where %s and annee between ? and ?
+        and annee in (select distinct annee from detail where prenom = ?)
+      group by dpt
+    )
+    select d.dpt, d.nom, coalesce(p.n, 0) as naissances,
+           1000.0 * coalesce(p.n, 0) / t.total as pour_mille,
+           (1000.0 * coalesce(p.n, 0) / t.total) /
+             (1000.0 * sum(coalesce(p.n, 0)) over () / sum(t.total) over ()) as indice
+    from departements d join t using (dpt) left join p using (dpt)
+    order by pour_mille desc", fs, fs), prenom_sel(), debut, fin, debut, fin, prenom_sel())
+})
+
+output$carte_prenom <- renderPlotly({
+  carte_france(geo(), valeur = "pour_mille", titre_legende = "‰ des naissances", fmt = fpm,
+               info = function(r) sprintf("%s naissances · indice %s", fnum(r$naissances), fnum(r$indice, 2)))
+})
+output$geo_prenom <- renderDT({
+  g <- geo()[, c("nom", "naissances", "pour_mille", "indice")]
+  tableau(setNames(g, c("Département", "Naissances", "‰", "Indice")), pageLength = 12, recherche = TRUE) |>
+    formatRound(2, digits = 0, mark = " ") |>
+    formatRound(c(3, 4), digits = 2, dec.mark = ",") |>
+    formatStyle("‰", background = styleColorBar(c(0, max(g$pour_mille, na.rm = TRUE)), "#b5d2f4"),
+                backgroundSize = "98% 70%", backgroundRepeat = "no-repeat", backgroundPosition = "center")
+})
+
+output$comparaison <- renderPlotly({
+  req(length(input$comparer) > 0)
+  noms <- paste(DBI::dbQuoteString(con, input$comparer), collapse = ", ")
+  d <- q(sprintf("select annee, libelle, sum(nombre) as naissances from france
+                  where prenom in (%s) and not est_rare group by all order by annee", noms))
+  ordre <- unique(q(sprintf("select libelle from catalogue where prenom in (%s) order by total desc", noms))$libelle)
+  d$libelle <- factor(d$libelle, levels = ordre)
+  plot_ly(d, x = ~annee, y = ~naissances, color = ~libelle, colors = PAL[seq_along(ordre)]) |>
+    add_lines(line = list(width = 2)) |>
+    style_plotly() |> layout(yaxis = list(tickformat = ",d"))
+})
+
+# ======================================================================= Explorer un département
+dpt_sel <- reactive({ req(input$dpt); input$dpt })
+dec <- reactive(as.integer(input$decennie))
+
+info_dpt <- reactive({
+  q("select d.*,
+       (select sum(naissances) from naissances_dpt where dpt = ?) as naissances,
+       (select count(distinct prenom) from detail where dpt = ?) as prenoms,
+       (select libelle from detail where dpt = ? and sexe = 'F' group by libelle order by sum(nombre) desc limit 1) as top_f,
+       (select libelle from detail where dpt = ? and sexe = 'M' group by libelle order by sum(nombre) desc limit 1) as top_m
+     from departements d where d.dpt = ?", dpt_sel(), dpt_sel(), dpt_sel(), dpt_sel(), dpt_sel())
+})
+output$vb_d_naiss <- renderText(fnum(info_dpt()$naissances))
+output$vb_d_nom <- renderText(sprintf("%s · %s", info_dpt()$nom, info_dpt()$region))
+output$vb_d_prenoms <- renderText(fnum(info_dpt()$prenoms))
+output$vb_d_f <- renderText(info_dpt()$top_f)
+output$vb_d_m <- renderText(info_dpt()$top_m)
+
+output$carte_situation <- renderPlotly(carte_france(DEPTS, mode = "situation", surbrillance = dpt_sel()))
+
+output$d_naissances <- renderPlotly({
+  serie_sexe(q("select annee, sexe, naissances from naissances_dpt where dpt = ? order by annee", dpt_sel()),
+             "naissances", type = "area")
+})
+
+output$d_palmares <- renderDT({
+  d <- q("with x as (
+            select libelle, sum(nombre) as n from detail
+            where dpt = ? and sexe = ? and annee between ? and ? + 9 group by all
+          )
+          select row_number() over (order by n desc) as rang, libelle, n, n / sum(n) over () as part
+          from x qualify rang <= 20 order by rang", dpt_sel(), input$sexe_d, dec(), dec())
+  tableau(setNames(d, c("#", "Prénom", "Naissances", "Part (prénoms publiés)")), pageLength = 20) |>
+    formatRound(3, digits = 0, mark = " ") |>
+    formatPercentage(4, digits = 1, dec.mark = ",") |>
+    formatStyle("Naissances", background = styleColorBar(c(0, max(d$n)), "#cfe0f6"),
+                backgroundSize = "98% 70%", backgroundRepeat = "no-repeat", backgroundPosition = "center")
+})
+
+output$d_specifiques <- renderPlotly({
+  d <- q("with loc as (
+            select prenom, libelle, sum(nombre) as n from detail
+            where dpt = ? and sexe = ? and annee between ? and ? + 9 group by all
+          ),
+          loc_tot as (select sum(naissances) as t from naissances_dpt
+                      where dpt = ? and sexe = ? and annee between ? and ? + 9),
+          nat as (select prenom, sum(nombre) as n from france
+                  where sexe = ? and annee between ? and ? + 9 group by all),
+          nat_tot as (select sum(naissances) as t from naissances
+                      where sexe = ? and annee between ? and ? + 9)
+          select loc.libelle, loc.n, (loc.n / loc_tot.t) / (nat.n / nat_tot.t) as indice
+          from loc join nat using (prenom), loc_tot, nat_tot
+          where loc.n >= 30 order by indice desc limit 15",
+         dpt_sel(), input$sexe_d, dec(), dec(), dpt_sel(), input$sexe_d, dec(), dec(),
+         input$sexe_d, dec(), dec(), input$sexe_d, dec(), dec())
+  validate(need(nrow(d) > 0, "Pas assez de données pour cette décennie."))
+  barres_h(d, "indice", "libelle", couleur = PAL[3], fmt_x = ".1f")
+})
+
+output$d_numero_un <- renderDT({
+  d <- q("with r as (
+            select annee // 10 * 10 as decennie, sexe, libelle, sum(nombre) as n
+            from detail where dpt = ? group by 1, 2, 3
+            qualify row_number() over (partition by decennie, sexe order by n desc) = 1
+          )
+          select decennie::varchar || 's' as Décennie,
+                 max(libelle) filter (where sexe = 'F') as \"Fille n°1\", max(n) filter (where sexe = 'F') as \"Naissances \",
+                 max(libelle) filter (where sexe = 'M') as \"Garçon n°1\", max(n) filter (where sexe = 'M') as Naissances
+          from r group by decennie order by decennie desc", dpt_sel())
+  tableau(d, pageLength = 13) |> formatRound(c(3, 5), digits = 0, mark = " ")
+})
+
+# ======================================================================= La France des prénoms
+top_dpt <- reactive({
+  q("with r as (
+       select dpt, libelle, nombre,
+              row_number() over (partition by dpt order by nombre desc, libelle) as rk
+       from detail where annee = ? and sexe = ?
+     )
+     select r.dpt, d.nom, r.libelle as prenom, r.nombre as naissances,
+            r.nombre::double / t.naissances as part
+     from r join departements d using (dpt)
+     join naissances_dpt t on t.dpt = r.dpt and t.annee = ? and t.sexe = ?
+     where rk = 1 order by r.dpt", input$annee_c, input$sexe_c, input$annee_c, input$sexe_c)
+})
+
+output$carte_top <- renderPlotly({
+  carte_france(top_dpt(), valeur = "naissances", categorie = "prenom", titre_legende = "naissances :",
+               info = function(r) paste(fpct(r$part), "des naissances du département"))
+})
+output$top_resume <- renderDT({
+  d <- aggregate(cbind(departements = 1, naissances = naissances) ~ prenom, data = top_dpt(), FUN = sum)
+  d <- d[order(-d$departements, -d$naissances), ]
+  tableau(setNames(d, c("Prénom", "Départements", "Naissances")), pageLength = 12) |>
+    formatRound(3, digits = 0, mark = " ") |>
+    formatStyle("Départements", background = styleColorBar(c(0, max(d$departements)), "#cfe0f6"),
+                backgroundSize = "98% 70%", backgroundRepeat = "no-repeat", backgroundPosition = "center")
+})
+output$top_detail <- renderDT({
+  d <- top_dpt()[, c("dpt", "nom", "prenom", "naissances", "part")]
+  tableau(setNames(d, c("Code", "Département", "Prénom n°1", "Naissances", "Part")), pageLength = 12, recherche = TRUE) |>
+    formatRound(4, digits = 0, mark = " ") |> formatPercentage(5, digits = 1, dec.mark = ",")
+})
+
+indicateurs <- reactive({
+  q("with det as (
+       select dpt, count(distinct prenom) as prenoms_distincts, sum(nombre) as publies
+       from detail where annee = ? and sexe = ? group by dpt
+     )
+     select d.dpt, d.nom, t.naissances, 1 - det.publies::double / t.naissances as part_rares
+     from departements d
+     join naissances_dpt t on t.dpt = d.dpt and t.annee = ? and t.sexe = ?
+     left join det on det.dpt = d.dpt", input$annee_c, input$sexe_c, input$annee_c, input$sexe_c)
+})
+output$carte_naiss <- renderPlotly(carte_france(indicateurs(), valeur = "naissances", titre_legende = "naissances"))
+output$carte_rares <- renderPlotly(carte_france(indicateurs(), valeur = "part_rares", titre_legende = "part", fmt = fpct))
+
+# ======================================================================= Tendances
+evolutions <- reactive({
+  a <- input$periode_t[1]; b <- input$periode_t[2]
+  q("with a as (select prenom, libelle, nombre, pour_mille, rang from rangs where annee = ? and sexe = ?),
+          b as (select prenom, libelle, nombre, pour_mille, rang from rangs where annee = ? and sexe = ?)
+     select coalesce(b.libelle, a.libelle) as libelle,
+            coalesce(b.pour_mille, 0) - coalesce(a.pour_mille, 0) as ecart
+     from a full join b using (prenom)", a, input$sexe_t, b, input$sexe_t)
+})
+output$hausses <- renderPlotly({
+  d <- head(evolutions()[order(-evolutions()$ecart), ], 12)
+  barres_h(d, "ecart", "libelle", couleur = PAL[3], fmt_x = "+.1f")
+})
+output$baisses <- renderPlotly({
+  d <- head(evolutions()[order(evolutions()$ecart), ], 12)
+  barres_h(d, "ecart", "libelle", couleur = PAL[8], fmt_x = "+.1f") |> layout(xaxis = list(autorange = "reversed"))
+})
+
+output$course <- renderPlotly({
+  fin <- input$periode_t[2]
+  d <- q("with top as (select prenom, rang from rangs where annee = ? and sexe = ? and rang <= 15)
+          select r.annee, r.libelle, r.pour_mille, top.rang as rang_fin
+          from rangs r join top using (prenom)
+          where r.sexe = ? and r.annee between ? - 30 and ?
+          order by top.rang", fin, input$sexe_t, input$sexe_t, fin, fin)
+  ordre <- unique(d$libelle[order(d$rang_fin)])
+  plot_ly(d, x = ~annee, y = ~factor(libelle, levels = rev(ordre)), z = ~pour_mille, type = "heatmap",
+          colorscale = list(c(0, RAMPE[1]), c(0.5, RAMPE[5]), c(1, RAMPE[7])),
+          xgap = 2, ygap = 2, colorbar = list(title = "‰", thickness = 10),
+          hovertemplate = "%{y} en %{x} : %{z:.2f} ‰<extra></extra>") |>
+    style_plotly(legende = FALSE) |>
+    layout(hovermode = "closest", yaxis = list(title = "", gridcolor = "rgba(0,0,0,0)"),
+           xaxis = list(dtick = 5))
+})
+```
